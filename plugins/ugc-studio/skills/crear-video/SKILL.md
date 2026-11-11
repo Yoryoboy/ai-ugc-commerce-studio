@@ -1,6 +1,6 @@
 ---
 name: crear-video
-description: Create a UGC video for a product with one of the studio's virtual actors — load the product sheet and allowed claims, recommend an actor, propose three ideas with script and cost, let the user choose drafts or direct final, draw a storyboard frame per shot, generate with Seedance 2.5 on Higgsfield, review, finalize and register it in the studio dashboard. Use when the user wants a video, ad, reel or UGC for a product.
+description: Create a UGC video for a product with one of the studio's virtual actors — load the product sheet and allowed claims, recommend an actor, propose three ideas with script and cost, let the user choose drafts or direct final, draw a storyboard frame per shot, generate with Seedance 2.5 on Higgsfield, review, finalize and save it in the studio so it shows in the gallery. Use when the user wants a video, ad, reel or UGC for a product.
 ---
 
 # Create a UGC video
@@ -8,9 +8,11 @@ description: Create a UGC video for a product with one of the studio's virtual a
 The user is usually not a programmer. Talk in Spanish (Rioplatense, warm, short). You
 recommend, they pick. Never spend credits without telling them the exact cost first.
 
-Shared files are in `../../references/` from this skill's base directory: `claims-rules.md`,
-`costs.md`, `prompts/ugc-video.md`, `db-schema.md`, `dashboard-sync.md`. Read `studio.json`
-first; if it is missing, run `setup`.
+Shared files are in `${CLAUDE_PLUGIN_ROOT}/references/`: `claims-rules.md`, `costs.md`,
+`prompts/ugc-video.md` and `workspace.md`, the contract for where every file goes. Save every
+file exactly where it says: the gallery (`galeria.html`) shows the work from the folders and
+updates by itself, so the user can follow along there. Read `studio.json` first; if it is
+missing, run `setup`.
 
 ## 1. Product
 
@@ -26,11 +28,12 @@ tools). Then:
 3. Write `clientes/<profileId>/<productId>/ficha.md`: title, price, key attributes, and the
    **allowed** and **forbidden** claims with their sources (`claims-rules.md`). Photo text counts
    as a source, but health or medical promises are always forbidden.
-4. Make sure the product has a `productos` row in the dashboard (create it if not).
+4. Write `clientes/<profileId>/<productId>/producto.json` if it does not exist (`workspace.md`),
+   with the best photo as `cover`.
 
 ## 2. Actor
 
-Read the `actores` rows (or `actores/*/actor.json`). Recommend the best fit for the product and
+Read `actores/*/actor.json`. Recommend the best fit for the product and
 its buyer, saying why in one line, using each actor's `fitsNiches` / `avoidNiches`. If none fits,
 say so and offer to create one with the `crear-actor` skill.
 
@@ -86,44 +89,51 @@ version got every shot right on the first try. Ad Multiplier and `video_edit` di
    points, what fits where). Same room, light and wardrobe in every scene.
 4. `generate_image_batch` with `gpt_image_2_6`, `aspect_ratio: 9:16`, quality high, 2k, and the
    actor portrait, character sheet and one product photo as references (2.75 per scene).
-5. Save the frames as `escena-1.png` … in the video folder and a side-by-side `storyboard.jpg`.
-   Look at each one yourself; regenerate only the frame that is wrong.
-6. Show the user the storyboard and ask: **Aprobar** (go to the video) or **Cambiar una escena**
-   (say which; regenerate only that one).
+5. Create the video folder and its `video.json` with `status: storyboard`, the idea, hook,
+   script, scene count and the credits spent so far. Save the frames as `escena-1.png` … and a
+   side-by-side `storyboard.jpg`. Look at each one yourself; regenerate only the frame that is
+   wrong.
+6. Tell the user the storyboard is in the gallery (they can open `galeria.html` or ask you to) and
+   ask: **Aprobar** (go to the video) or **Cambiar una escena** (say which; regenerate only that
+   one and overwrite its `escena-N.png`).
 
 ## 6. Generate
 
 1. Fill `prompts/ugc-video.md` with the actor, product, allowed claims and the chosen script,
-   plus its storyboard section. Save it as
-   `clientes/<profileId>/<productId>/videos/<videoId>/prompt.md`.
+   plus its storyboard section. Save it as `prompt-vN.md` in the video folder (N = the new
+   version number).
 2. `generate_video` with `seedance_2_5`, `mode: omni_reference`, `aspect_ratio: 9:16`,
    `generate_audio: true`, the duration, `draft` as chosen, and `medias`: frame 1 as
    `start_image`, then as `image_references` the actor portrait, character sheet, frames 2…n and
    one product photo. Higgsfield puts the start image first in the reference list, so number the
    references in the prompt counting it as image 1 (see the template).
 3. Wait with `jobs_wait` until it finishes (a 15 s video takes about 2 minutes).
-4. Download it to the video folder, make the thumbnail and register it (`dashboard-sync.md`):
-   status `draft` (or `final` if direct), credits (frames + video), job id, URLs.
+4. Download it as `borrador-vN.mp4`, make its thumbnail with
+   `sh "${CLAUDE_PLUGIN_ROOT}/scripts/miniatura.sh" <video folder>/borrador-vN.mp4` (it writes
+   `thumb-vN.jpg`), then update `video.json`: append the version (`n`, job id, Higgsfield URL,
+   resolution, credits, short note, date), add its credits to the total, set `status` to `draft`
+   (or `final` if it was direct 1080p) and `updatedAt`. Update `credits` in `studio.json` with
+   the Higgsfield balance.
 
 ## 7. Review → decision 4
 
 Look at frames yourself first (identity, product shape and color, hands, framing, visible phone).
-Then tell the user what you saw, where to watch it (dashboard and Higgsfield link) and ask:
+Then tell the user what you saw, that it is in the gallery (every version stays there) and ask:
 
 - **Aprobar** → if it was a draft, finalize it (`draft_job_id`, confirm the cost first), download
-  the final, update the row to `final` and delete the preview asset.
-- **Pedir un cambio** → adjust only the part that failed, say the cost and generate again;
-  add the credits and a new entry in `versions` to the same video row.
+  it as `final.mp4`, and in `video.json` set `finalUrl`, add the cost and set `status: final`.
+- **Pedir un cambio** → adjust only the part that failed, say the cost and generate again as the
+  next version (`N + 1`) in the same video folder.
   - Staging or action wrong: fix that storyboard frame first, then regenerate the video.
   - Dialogue wrong: fix the line in the prompt and regenerate.
   - Do not use `mode: video_edit` or Ad Multiplier to fix a video. In tests (2026-11-10)
     `video_edit` returned a video the user found identical (53 credits) and Ad Multiplier on
     the hook gave no visible improvement (15 credits).
-- **Descartar** → status `discarded`, delete the preview asset.
+- **Descartar** → set `status: discarded` in `video.json`. Keep the files.
 
 They judge the audio (voice, accent, lip-sync); you cannot hear it, so ask.
 
 ## 8. Close
 
-Summarize: video, status, total credits for this video, where it is (folder, dashboard,
-Higgsfield).
+Summarize: video, status, total credits for this video, and where to see it (the gallery, and
+Higgsfield for the original files).

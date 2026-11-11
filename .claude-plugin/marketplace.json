@@ -8,8 +8,8 @@
   "plugins": [
     {
       "name": "ugc-studio",
-      "description": "Create virtual actors, pick products worth a video, and generate UGC videos with Higgsfield, with a dashboard of creations and credits.",
-      "version": "0.1.0",
+      "description": "Create virtual actors, pick products worth a video, and generate UGC videos with Higgsfield, with a local gallery of everything created.",
+      "version": "0.2.0",
       "author": {
         "name": "Yoryo"
       },

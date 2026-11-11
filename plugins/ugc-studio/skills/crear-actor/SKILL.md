@@ -8,9 +8,10 @@ description: Create a new virtual actor (a recurring synthetic person for UGC vi
 The user is usually not a programmer. Talk in Spanish (Rioplatense, warm, short). They
 should never have to invent a description: **you recommend, they pick.**
 
-Shared files are in `../../references/` from this skill's base directory:
-`prompts/actor-portrait.md`, `prompts/actor-angles.md`, `prompts/actor-character-sheet.md`,
-`db-schema.md`, `dashboard-sync.md`. Read `studio.json` first; if it is missing, run `setup`.
+Shared files are in `${CLAUDE_PLUGIN_ROOT}/references/`: `prompts/actor-portrait.md`,
+`prompts/actor-angles.md`, `prompts/actor-character-sheet.md` and `workspace.md`, the contract
+for where every file goes (the gallery only shows what follows it). Read `studio.json` first; if
+it is missing, run `setup`.
 
 ## 1. Start from the reason
 
@@ -71,14 +72,13 @@ and outfit match the portrait in every view.
    `action: create`, `category: character`, media `type: image_job`). It is used for images.
 3. Propose the actor profile and confirm it with the user in one question: gender, apparent age,
    style, personality, niches where the actor fits and niches where not.
-4. Write `actores/<actorId>/actor.json` with the profile, the three job ids, the Element id and
-   the prompts used.
-5. Upload a 540 px JPEG of the portrait to the dashboard and write the `actores/<actorId>` row
-   (see `dashboard-sync.md` and `db-schema.md`). For video, the portrait and the character sheet
-   job ids are what `crear-video` passes to Seedance 2.5 as `image_references` (Seedance 2.5 does
-   not use Elements).
+4. Write `actores/<actorId>/actor.json` as `workspace.md` defines it: the profile, the three job
+   ids, the Element id and the credits spent. The actor appears in the gallery by itself. For
+   video, the portrait and the character sheet job ids are what `crear-video` passes to Seedance
+   2.5 as `image_references` (Seedance 2.5 does not use Elements).
+5. Update `credits` in `studio.json` with the Higgsfield balance.
 
 ## 6. Close
 
-Tell the user the actor is ready, show the portrait, the credits used, and suggest the next step
-("¿Hacemos un video con <nombre>?").
+Tell the user the actor is ready and is in the gallery (Actores), the credits used, and suggest
+the next step ("¿Hacemos un video con <nombre>?").

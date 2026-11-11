@@ -7,12 +7,13 @@ e-commerce, sin salir de la app de escritorio de Claude.
   imágenes y Seedance 2.5 para el video con voz.
 - **Datos de los productos:** conector BI-MCP. Trae el catálogo y las ventas de Mercado Libre,
   Tiendanube y VTEX.
-- **Tablero:** una página de Claude con todos los videos por cliente y producto, sus versiones y
-  los créditos usados y disponibles.
+- **Galería:** una página en tu computadora con todos los actores, productos y videos, sus
+  versiones, el storyboard y los créditos. Se arma sola a partir de la carpeta del estudio y se
+  actualiza mientras Claude trabaja.
 
 ## Qué necesitás
 
-- La **app de escritorio de Claude** (Mac o Windows), con la pestaña **Code**.
+- La **app de escritorio de Claude** en Mac, con la pestaña **Code**.
 - Una cuenta de **Higgsfield** con créditos.
 - Acceso a **BI-MCP**. Pedíselo a quien administra los clientes.
 
@@ -58,8 +59,7 @@ En la pestaña **Code**, con la carpeta del estudio abierta, escribí:
 Configurá el estudio
 ```
 
-Claude revisa los conectores, crea las carpetas y publica tu tablero. Al final te da el enlace
-del tablero; conviene fijarlo en la barra lateral de Claude.
+Claude revisa los conectores, crea las carpetas y te abre la galería en el navegador.
 
 ## Uso diario
 
@@ -71,7 +71,7 @@ palabras:
 | Crear una persona virtual para los videos | "Quiero crear un actor" |
 | Elegir qué producto conviene | "¿A qué producto de este cliente le conviene un video?" |
 | Hacer un video | "Quiero un video para las patas de sommier" |
-| Ver todo lo creado | Abrí el tablero |
+| Ver todo lo creado | Doble clic en `galeria.html`, o "Abrí la galería" |
 
 Claude te recomienda opciones y vos elegís. **Nunca gasta créditos sin decirte antes cuánto
 cuesta.**
@@ -83,19 +83,22 @@ Para cada video, Claude:
 3. Genera el video a partir de esas imágenes.
 
 Un video de 15 s en borrador cuesta unos 56 créditos. Si te gusta, se pasa a 1080p sin volver a
-generarlo.
+generarlo. Podés dejar la galería abierta: las escenas y los videos aparecen ahí a medida que se
+crean.
 
 ## Dónde queda cada cosa
 
 ```txt
 UGC Studio/
+├── galeria.html    la galería: abrila con doble clic
 ├── actores/        un actor por carpeta: retrato, ángulos, ficha
-├── clientes/       por cliente y producto: fotos, ficha y videos
-└── studio.json     configuración del estudio (no lo borres)
+├── clientes/       por cliente y producto: fotos, ficha y videos (con storyboard y versiones)
+├── studio.json     configuración del estudio (no lo borres)
+└── .galeria/       índice de la galería, se arma solo (carpeta oculta)
 ```
 
-Los videos finales en alta calidad se ven y se descargan desde Higgsfield. El tablero tiene las
-miniaturas, los borradores y el enlace a cada video.
+Todo queda en tu computadora: borradores, finales en 1080p e imágenes. La galería solo muestra lo
+que está en esta carpeta, así que no muevas ni renombres archivos a mano.
 
 ## Actualizar el plugin
 
@@ -109,12 +112,50 @@ Code:
 
 Después cerrá y volvé a abrir la sesión de Code para que tome los cambios.
 
+## Si sos un agente configurando el estudio
+
+Seguí estos pasos en orden y verificá cada uno antes de pasar al siguiente.
+
+1. **Conectores.** La sesión tiene que tener las herramientas de Higgsfield (`balance`) y de
+   BI-MCP (`config_list_profiles`). Si falta alguno, pedile al usuario que lo conecte en
+   Configuración › Conectores y esperá.
+2. **Carpeta.** Trabajá en la carpeta que el usuario eligió para el estudio. Todas las sesiones
+   tienen que abrirse en esa misma carpeta.
+3. **Plugin.** `/plugin marketplace add Yoryoboy/ai-ugc-commerce-studio` y
+   `/plugin install ugc-studio@ugc-studio`. Verificá con `/plugin` que `ugc-studio` está
+   habilitado. Si la sesión ya estaba abierta, hay que reiniciarla para que carguen los hooks.
+4. **Estudio.** Corré la skill `ugc-studio:setup`. Al terminar tienen que existir `studio.json`,
+   `actores/`, `clientes/`, `galeria.html` y `.galeria/datos.js`.
+5. **Contrato.** Dónde va cada archivo y qué tiene cada `.json` está en
+   `plugins/ugc-studio/references/workspace.md`. Las skills y la galería dependen de que se
+   respete.
+
+## Cómo funciona
+
+```txt
+references/workspace.md   el contrato: carpetas, nombres de archivo y campos de cada .json
+skills/                   los flujos (setup, crear-actor, crear-video); guardan según el contrato
+hooks/hooks.json          al abrir la sesión y después de cada archivo que escribe Claude,
+                          corre scripts/sincronizar.sh
+scripts/sincronizar.sh    copia la galería al estudio, valida los .json y arma .galeria/datos.js
+                          leyendo las carpetas; avisa a Claude si un .json está roto
+scripts/miniatura.sh      miniatura de un video (ffmpeg, o qlmanage + sips en Mac)
+galeria/galeria.html      la galería: lee datos.js y se recarga sola cada 3 segundos
+```
+
+Los hooks se instalan con el plugin y no hacen nada en carpetas que no son un estudio (sin
+`studio.json`). Los scripts usan solo herramientas que trae macOS: no hay que instalar nada.
+
 ## Para desarrolladores
 
 ```txt
 .claude-plugin/marketplace.json   marketplace que publica el plugin
-plugins/ugc-studio/               el plugin: skills, referencias y plantilla del tablero
+plugins/ugc-studio/               el plugin: skills, referencias, hooks, scripts y galería
 ```
+
+Tests del script de sincronización (necesitan Node): `sh tests/sincronizar.test.sh`. Para
+probarlo contra un estudio real: `CLAUDE_PROJECT_DIR=<estudio> sh
+plugins/ugc-studio/scripts/sincronizar.sh --resumen`.
 
 Antes de publicar un cambio:
 
