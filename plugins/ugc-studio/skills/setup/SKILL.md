@@ -65,7 +65,8 @@ Tell the user, in Spanish and in a few lines:
 - Always open Claude on this same folder; otherwise it cannot find their actors and videos.
 - Credits available (from step 1).
 - What they can ask next: "Quiero crear un actor", "¿A qué producto le conviene un video?",
-  "Quiero crear un video para <producto>".
+  "Quiero crear un video para <producto>". To move work to or from another computer: "Exportá
+  …" or "Importá …".
 
 ## Upgrading a 0.1.0 studio
 
