@@ -11,6 +11,8 @@ another layout: a file in the wrong place does not appear in the gallery.
 ├── studio.json                     studio settings (see below)
 ├── galeria.html                    copied by the plugin hook; never edit
 ├── .galeria/datos.js               index rebuilt by the plugin hook; never edit
+├── exportaciones/                  packages made by `transferir` (see Packages)
+├── importaciones/                  packages dropped here to import; optional
 ├── actores/
 │   └── <actorId>/
 │       ├── actor.json
@@ -156,3 +158,35 @@ relative to the product folder.
   `status` to `final`.
 
 The client and product come from the folder path, so `video.json` does not repeat them.
+
+## Packages
+
+`transferir` moves work between computers as a `.zip` made by `scripts/exportar.sh` and read by
+`scripts/importar.sh`. Inside, the files keep their studio paths (`actores/…`, `clientes/…`),
+plus a `manifest.json` at the root:
+
+```json
+{
+  "format": "ugc-studio-package",
+  "formatVersion": 1,
+  "plugin": "0.3.0",
+  "mode": "light",
+  "exportedAt": "2026-11-11T13:00:00Z",
+  "actors": ["martin-v1"],
+  "products": ["clientes/acme/MLA1234567890"],
+  "videos": ["clientes/acme/MLA1234567890/videos/2026-11-10-patas-cama-problema-solucion"],
+  "omitted": ["clientes/acme/MLA1234567890/videos/2026-11-10-patas-cama-problema-solucion/borrador-v1.mp4"]
+}
+```
+
+- A video brings its product (everything in the product folder except `videos/`) and its actor;
+  a product or a client brings its videos. `studio.json` never travels.
+- `mode` is `light` (default: no `borrador-vN.mp4`, no `candidatos/`; the drafts are listed in
+  `omitted` and stay reachable through the `jobId` of their version) or `complete`.
+- Packages are named `exportaciones/<yyyy-mm-dd>-<name>.zip` and never overwritten.
+- Importing never replaces a file. An element already in the studio with other content is a
+  conflict: it is skipped (`--omitir`) or imported under a new id (`--renombrar`, actors and
+  videos only). Renaming an actor updates `id` and `version` in its `actor.json` and `actorId` in
+  the videos imported with it; renaming a video updates its `id`.
+- Both computers must use the same Higgsfield account: the ids and links in the `.json` files
+  belong to it.

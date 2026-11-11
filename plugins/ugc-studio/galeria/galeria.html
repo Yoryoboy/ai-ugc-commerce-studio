@@ -109,6 +109,15 @@ a.card:hover { border-color: var(--accent); }
 .row button.thumb-btn:disabled { cursor: default; }
 @media (max-width: 560px) { .row { grid-template-columns: 56px minmax(0, 1fr); } .row .end { grid-column: 2; } }
 
+.top-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.chip.export { white-space: nowrap; }
+.chip.export:hover { border-color: var(--accent); }
+.estado { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 20; max-width: min(92vw, 460px); background: var(--fg); color: var(--bg); border-radius: var(--radius); padding: 10px 16px; font-size: 0.9rem; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25); }
+.estado:empty { display: none; }
+.manual { position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, 0.5); display: grid; place-items: center; padding: 16px; }
+.manual[hidden] { display: none; }
+.manual-box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 10px; width: min(100%, 520px); }
+.manual textarea { font: inherit; font-family: var(--font-data); font-size: 0.85rem; width: 100%; min-height: 5.5em; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); resize: vertical; }
 .empty { background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius); padding: 28px 20px; display: grid; gap: 6px; text-align: center; justify-items: center; }
 .empty p { max-width: 56ch; }
 .notice { font-size: 0.85rem; padding: 10px 12px; border-radius: 8px; background: var(--bad-soft); color: var(--bad); overflow-wrap: anywhere; }
@@ -122,6 +131,9 @@ a.card:hover { border-color: var(--accent); }
     <p class="muted">Si este mensaje no se va, abrí Claude en esta carpeta: arma la galería solo.</p>
   </div>
 </main>
+<!-- Outside #app so the 3 s re-render never wipes the message or the manual-copy panel. -->
+<div class="estado" id="estado" role="status" aria-live="polite"></div>
+<div class="manual" id="manual" role="dialog" aria-modal="true" aria-labelledby="manual-titulo" hidden></div>
 <script>
 "use strict";
 
@@ -184,6 +196,82 @@ function fmtPrice(p) {
 
 function plural(n, one, many) {
   return n + " " + (n === 1 ? one : many);
+}
+
+// ---------- export requests ----------
+// The page cannot run scripts, so "Exportar" only copies a request the user pastes into Claude.
+// The request names the element and its studio path so the agent resolves it unambiguously.
+
+let statusTimer = null;
+
+function exportRequest(kind, name, path) {
+  // Guillemets inside the name would make the quoted title ambiguous.
+  const label = String(name || "").replace(/[«»]/g, "").replace(/\s+/g, " ").trim();
+  if (kind === "studio") return "Exportá todo el estudio";
+  if (kind === "video") return "Exportá el video «" + label + "» (" + path + ")";
+  if (kind === "product") return "Exportá el producto «" + label + "» con sus videos (" + path + ")";
+  return "Exportá el actor " + label + " (" + path + ")";
+}
+
+// The aria-label names the element, so repeated buttons in a list are told apart by screen readers.
+function exportButton(text, request, ariaLabel) {
+  return h("button", { class: "chip export", type: "button", "aria-label": ariaLabel, onclick: () => copyRequest(request) }, text);
+}
+
+async function writeClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* fall through */ }
+  }
+  // Fallback for browsers or contexts without the async clipboard API.
+  const box = h("textarea", { readonly: true, "aria-hidden": "true", tabindex: "-1",
+    style: "position:fixed;left:-9999px;top:0;opacity:0" });
+  box.value = text;
+  const previous = document.activeElement;
+  document.body.append(box);
+  box.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  box.remove();
+  if (previous && previous.focus) previous.focus();
+  return ok;
+}
+
+function showStatus(text) {
+  const el = document.getElementById("estado");
+  el.textContent = text;
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => { el.textContent = ""; }, 5000);
+}
+
+// Last resort: show the request selected so the user can copy it by hand.
+function showManualCopy(text) {
+  clearTimeout(statusTimer);
+  document.getElementById("estado").textContent = "";
+  const panel = document.getElementById("manual");
+  const previous = document.activeElement;
+  const field = h("textarea", { readonly: true, "aria-label": "Pedido para Claude" });
+  field.value = text;
+  const close = () => {
+    panel.hidden = true;
+    panel.replaceChildren();
+    document.removeEventListener("keydown", onKey);
+    if (previous && previous.isConnected && previous.focus) previous.focus();
+  };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  panel.replaceChildren(h("div", { class: "manual-box" },
+    h("h2", { id: "manual-titulo" }, "Copialo a mano"),
+    h("p", { class: "muted" }, "No pude copiarlo solo. Seleccioná el texto, copialo y pegalo en el chat de Claude para exportar."),
+    field,
+    h("div", { class: "links" }, h("button", { class: "chip", type: "button", onclick: close }, "Cerrar"))));
+  panel.hidden = false;
+  document.addEventListener("keydown", onKey);
+  field.focus();
+  field.select();
+}
+
+async function copyRequest(text) {
+  if (await writeClipboard(text)) showStatus("Copiado. Pegalo en el chat de Claude para exportar.");
+  else showManualCopy(text);
 }
 
 // ---------- model ----------
@@ -258,7 +346,9 @@ function header(m) {
   return h("header", { class: "top" },
     h("div", { class: "top-head" },
       h("h1", {}, "UGC Studio"),
-      h("p", { class: "muted" }, "Actualizado " + fmtDate(m.generatedAt))),
+      h("div", { class: "top-actions" },
+        h("p", { class: "muted" }, "Actualizado " + fmtDate(m.generatedAt)),
+        exportButton("Exportar todo el estudio", exportRequest("studio")))),
     h("div", { class: "meter" },
       h("div", { class: "tile primary" },
         h("span", { class: "label" }, "Créditos disponibles"),
@@ -387,6 +477,7 @@ function videoDetail(m, path) {
       h("div", { class: "info" },
         pill(v.status),
         h("h2", {}, v.title || v.id),
+        h("div", { class: "links" }, exportButton("Exportar este video", exportRequest("video", v.title || v.id, v.path), "Exportar este video: " + (v.title || v.id))),
         h("div", { class: "facts" },
           fact("Producto", v.product ? v.product.title : v.productId, true),
           fact("Actor", v.actor ? v.actor.name : v.actorId),
@@ -435,7 +526,8 @@ function actorsView(m) {
         h("p", { class: "meta" }, plural(videosBy(a.id), "video", "videos") + " · " + fmtCredits(a.credits) + " cr"),
         h("div", { class: "links" },
           a.file("angulos.png") ? h("a", { href: url(a.file("angulos.png")), target: "_blank" }, "Ángulos") : null,
-          a.file("character-sheet.png") ? h("a", { href: url(a.file("character-sheet.png")), target: "_blank" }, "Ficha de personaje") : null)));
+          a.file("character-sheet.png") ? h("a", { href: url(a.file("character-sheet.png")), target: "_blank" }, "Ficha de personaje") : null),
+        h("div", { class: "links" }, exportButton("Exportar actor", exportRequest("actor", a.name || a.id, a.path), "Exportar actor " + (a.name || a.id)))));
   })));
 }
 
@@ -453,7 +545,8 @@ function productsView(m) {
         h("p", { class: "meta" }, [p.clientName || p.profileId, PLATFORM[p.platform] || p.platform, fmtPrice(p), plural(n, "video", "videos")].filter(Boolean).join(" · "))),
       h("div", { class: "end links" },
         n ? h("a", { href: "#videos", onclick: () => { videoFilter = "all"; } }, "Ver videos") : null,
-        safeUrl(p.url) ? h("a", { href: safeUrl(p.url), target: "_blank", rel: "noopener" }, "Publicación") : null));
+        safeUrl(p.url) ? h("a", { href: safeUrl(p.url), target: "_blank", rel: "noopener" }, "Publicación") : null,
+        exportButton("Exportar", exportRequest("product", p.title || p.productId, p.path), "Exportar producto " + (p.title || p.productId))));
   })));
 }
 

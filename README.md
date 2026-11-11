@@ -72,6 +72,8 @@ palabras:
 | Elegir qué producto conviene | "¿A qué producto de este cliente le conviene un video?" |
 | Hacer un video | "Quiero un video para las patas de sommier" |
 | Ver todo lo creado | Doble clic en `galeria.html`, o "Abrí la galería" |
+| Pasar trabajo a otra compu | "Exportá el video de las patas", "Exportá el cliente Acme", "Exportá todo el studio" |
+| Traer trabajo de otra compu | Arrastrá el `.zip` al chat, o dejalo en `importaciones/` y escribí "Importá lo que dejé" |
 
 Claude te recomienda opciones y vos elegís. **Nunca gasta créditos sin decirte antes cuánto
 cuesta.**
@@ -93,12 +95,26 @@ UGC Studio/
 ├── galeria.html    la galería: abrila con doble clic
 ├── actores/        un actor por carpeta: retrato, ángulos, ficha
 ├── clientes/       por cliente y producto: fotos, ficha y videos (con storyboard y versiones)
+├── exportaciones/  los paquetes .zip que exportás para otra compu
+├── importaciones/  dejá acá los paquetes que te pasan (opcional)
 ├── studio.json     configuración del estudio (no lo borres)
 └── .galeria/       índice de la galería, se arma solo (carpeta oculta)
 ```
 
 Todo queda en tu computadora: borradores, finales en 1080p e imágenes. La galería solo muestra lo
 que está en esta carpeta, así que no muevas ni renombres archivos a mano.
+
+## Pasar trabajo entre compus
+
+Claude arma un paquete `.zip` con lo que pidas (un actor, un video, un producto, un cliente o todo
+el estudio) y te dice dónde quedó para que lo mandes por AirDrop, WhatsApp o Drive. Del otro lado,
+Claude muestra qué trae antes de tocar nada, y si algo ya existe con otro contenido te avisa y te
+propone qué hacer: nunca pisa lo que ya tenés.
+
+- Por defecto el paquete es **liviano**: sin los borradores, que quedan como link a Higgsfield y
+  se pueden bajar de nuevo. Pedí "completo" si querés todo.
+- **Las dos compus tienen que usar la misma cuenta de Higgsfield.** Si no, los actores no sirven
+  para videos nuevos y los links pueden no abrir.
 
 ## Actualizar el plugin
 
@@ -134,12 +150,15 @@ Seguí estos pasos en orden y verificá cada uno antes de pasar al siguiente.
 
 ```txt
 references/workspace.md   el contrato: carpetas, nombres de archivo y campos de cada .json
-skills/                   los flujos (setup, crear-actor, crear-video); guardan según el contrato
+skills/                   los flujos (setup, crear-actor, crear-video, transferir); guardan según
+                          el contrato
 hooks/hooks.json          al abrir la sesión y después de cada archivo que escribe Claude,
                           corre scripts/sincronizar.sh
 scripts/sincronizar.sh    copia la galería al estudio, valida los .json y arma .galeria/datos.js
                           leyendo las carpetas; avisa a Claude si un .json está roto
 scripts/miniatura.sh      miniatura de un video (ffmpeg, o qlmanage + sips en Mac)
+scripts/exportar.sh       arma el paquete .zip de exportación con su manifest.json
+scripts/importar.sh       revisa un paquete, muestra qué trae y lo importa sin pisar nada
 galeria/galeria.html      la galería: lee datos.js y se recarga sola cada 3 segundos
 ```
 
@@ -153,7 +172,8 @@ Los hooks se instalan con el plugin y no hacen nada en carpetas que no son un es
 plugins/ugc-studio/               el plugin: skills, referencias, hooks, scripts y galería
 ```
 
-Tests del script de sincronización (necesitan Node): `sh tests/sincronizar.test.sh`. Para
+Tests (necesitan Node; los de transferir, también unzip y zip o python3):
+`sh tests/sincronizar.test.sh` y `sh tests/transferir.test.sh`. Para
 probarlo contra un estudio real: `CLAUDE_PROJECT_DIR=<estudio> sh
 plugins/ugc-studio/scripts/sincronizar.sh --resumen`.
 
