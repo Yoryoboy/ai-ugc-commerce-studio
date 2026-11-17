@@ -27,9 +27,10 @@ Registralo como MCP simple, con el proyecto fijo `memory`:
 claude mcp add --transport stdio --scope user --env ENGRAM_PROJECT=memory engram -- <RUTA_ABSOLUTA_ENGRAM> mcp --tools=agent
 ```
 
-- Si ya existe un MCP llamado `engram`, mostrame su configuración actual; si no tiene
-  `ENGRAM_PROJECT=memory`, eliminalo con `claude mcp remove engram --scope user` y
-  volvé a registrarlo con el comando de arriba.
+- Si ya existe un MCP llamado `engram`, mostrame su configuración actual. Si no tiene
+  `ENGRAM_PROJECT=memory`, puede ser una configuración que uso para otra cosa: explicame qué
+  cambiaría y preguntame antes. Solo con mi OK, eliminalo con
+  `claude mcp remove engram --scope user` y volvé a registrarlo con el comando de arriba.
 - Verificá con `claude mcp list` que `engram` aparece.
 
 ## Paso 3 — Configurar Claude Desktop (solo Mac)
@@ -53,11 +54,28 @@ En Linux salteá este paso. Archivo: `~/Library/Application Support/Claude/claud
 - Recordame al final que tengo que cerrar Claude Desktop por completo (Cmd+Q) y volver
   a abrirlo.
 
-## Paso 4 — Instrucciones de memoria en ~/.claude/CLAUDE.md
-- Si `~/.claude/CLAUDE.md` no existe, crealo con el contenido de abajo.
-- Si existe, respaldalo y agregá el contenido de abajo al final, sin borrar lo que
-  ya tiene. Si ya hay una sección "Memoria persistente (Engram)", mostrámela y
-  preguntame antes de reemplazarla.
+## Paso 4 — Instrucciones de memoria en el CLAUDE.md del usuario
+
+**Qué archivo.** Es el `CLAUDE.md` de la carpeta de configuración de Claude Code que usa esta
+sesión: `$CLAUDE_CONFIG_DIR/CLAUDE.md` si la variable `CLAUDE_CONFIG_DIR` está definida (miralo
+con `echo "$CLAUDE_CONFIG_DIR"`), y si no, `~/.claude/CLAUDE.md`. Decime la ruta exacta antes de
+tocarlo. Nunca escribas en otro `CLAUDE.md` (ni en el de la carpeta del proyecto).
+
+**Nunca borres ni reescribas lo que el usuario ya tiene.** Solo se agrega texto.
+
+- **Si el archivo no existe o está vacío:** crealo con el contenido de abajo.
+- **Si existe y tiene contenido:** primero hacé un respaldo (copia con la fecha en el nombre, en
+  la misma carpeta). Después leelo y contame en pocas líneas qué instrucciones tiene. No escribas
+  nada hasta que yo elija:
+  - **Si ya tiene instrucciones de memoria** (una sección "Memoria persistente (Engram)", otra
+    configuración de Engram, o reglas sobre cuándo guardar o buscar recuerdos): mostrame esa
+    parte, explicame en qué se diferencia del contenido de abajo y preguntame cómo seguir:
+    dejar la mía como está, agregar solo lo que falta, o reemplazar únicamente esa sección. Si
+    hay cosas que se contradicen (por ejemplo, otro proyecto de memoria), señalalas.
+  - **Si tiene otras instrucciones pero ninguna de memoria:** proponeme agregar el contenido de
+    abajo al final, separado con una línea en blanco, y esperá mi OK.
+- Después de escribir, mostrame la diferencia con el respaldo para confirmar que no se perdió
+  nada de lo que había.
 
 Contenido a agregar (copialo exactamente):
 
@@ -131,7 +149,8 @@ mem_session_summary. Llamá a mem_context solo si hace falta más contexto.
    crearla a mano). Si todavía no existe, ejecutá `ENGRAM_PROJECT=memory <RUTA_ABSOLUTA_ENGRAM> version`
    o el comando de diagnóstico que indique la documentación, y volvé a revisar.
 2. Decime que reinicie Claude Code (salir y volver a entrar, o abrir una sesión nueva en la
-   misma carpeta) para que cargue el MCP y el CLAUDE.md nuevos.
+   misma carpeta) para que cargue el MCP y el CLAUDE.md nuevos. Si la sesión usa
+   `CLAUDE_CONFIG_DIR`, tiene que volver a abrirse con esa misma variable.
 3. Al final, dame un resumen con:
    - versión y ruta de Engram instalada;
    - archivos creados o modificados y sus respaldos;
