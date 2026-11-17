@@ -275,10 +275,20 @@ starts it if needed and opens it in the browser (`start`, `stop`, `status` and `
 The session hook starts it by itself; it stops after 30 idle minutes (`UGC_GALERIA_IDLE_MIN`). It
 needs Node 18 or newer (`references/dependencias.md`), listens on `127.0.0.1` only and indexes the
 folders in memory, so nothing has to be rebuilt after saving a file. Double-clicking `galeria.html`
-only shows a notice.
+only shows a notice. A server left from another plugin version or folder is stopped and replaced
+the next time the hook or `galeria.sh` starts it. The server listens before it has indexed the
+studio: until then (a moment, longer in a huge studio) its data answers are `503` with
+`Retry-After`, and `/api/salud` says `"listo": false`.
 
-- `.galeria/servidor.json`: `{pid, port, token, startedAt, version}`, written by the server (mode
-  600). The token gives access to the gallery: never print it in a message or copy it elsewhere.
+- `.galeria/servidor.json`: `{pid, port, token, startedAt, version, plugin}`, written by the server
+  (mode 600; `plugin` is the plugin folder it runs from). The token gives access to the gallery:
+  never print it, paste it into a chat or copy it elsewhere. `galeria.sh start`, `status` and the
+  hook summary print the address without the token (`http://127.0.0.1:<port>/`); only
+  `galeria.sh url` prints the private address with `?t=<token>`, for the user, never for a chat.
+  To open the gallery, run `galeria.sh open` (or tell the user to ask "abrí la galería"): it opens
+  `.galeria/abrir.html` (mode 600), a tiny page that redirects to the private address, so the token
+  never appears in a command line or in any output. `GET /api/salud` needs no token and answers
+  only `{ok, version, pid, listo}`.
 - `.galeria/miniaturas/<sha1>.jpg`: thumbnail cache. It can be deleted at any time; it is rebuilt.
 - `.galeria/validado`, `.galeria/rotos.txt`: state of the hook that validates the `.json` files.
 - `archived` and `archivedAt`: any `actor.json`, `producto.json`, `marca.json`, `video.json` or

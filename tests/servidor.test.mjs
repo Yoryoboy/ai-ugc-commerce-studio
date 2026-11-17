@@ -109,9 +109,12 @@ function estudioRico() {
 }
 
 const servers = [];
+// The server listens before it has indexed the studio; unless a test is about that, wait for the index.
 async function iniciar(studio, opts = {}) {
-  const srv = await crearServidor({ studio, port: 0, idleMin: 0, debounceMs: 40, checkMs: 10000, ...opts });
+  const { sinEsperar, ...resto } = opts;
+  const srv = await crearServidor({ studio, port: 0, idleMin: 0, debounceMs: 40, checkMs: 10000, ...resto });
   servers.push(srv);
+  if (!sinEsperar) await srv.listo;
   return srv;
 }
 after(async () => {
@@ -281,13 +284,13 @@ describe("/datos.js", () => {
 describe("token, cookie and Host", () => {
   test("requests without the token are rejected, with it they pass", async () => {
     const srv = await iniciar(estudioBasico());
-    for (const p of ["/", "/datos.js", "/api/salud", "/api/estudio", "/api/elementos", "/api/papelera", "/actores/ana-v1/actor.json"]) {
+    for (const p of ["/", "/datos.js", "/api/estudio", "/api/elementos", "/api/papelera", "/actores/ana-v1/actor.json"]) {
       const r = await req(srv, { path: p, auth: false });
       assert.equal(r.status, 401, p);
       assert.ok(!r.text.includes("ana-v1") && !r.text.includes("credits"), "no data in " + p);
     }
-    assert.equal((await req(srv, { path: "/api/salud", headers: { "X-UGC-Token": "x".repeat(64) } })).status, 401);
-    assert.equal((await req(srv, { path: "/api/salud", headers: { "X-UGC-Token": "" } })).status, 401);
+    assert.equal((await req(srv, { path: "/api/estudio", headers: { "X-UGC-Token": "x".repeat(64) } })).status, 401);
+    assert.equal((await req(srv, { path: "/api/estudio", headers: { "X-UGC-Token": "" } })).status, 401);
     const ok = await req(srv, { path: "/api/salud" });
     assert.equal(ok.status, 200);
     const salud = ok.json();
@@ -315,14 +318,14 @@ describe("token, cookie and Host", () => {
     assert.match(cookie, /SameSite=Strict/);
     assert.ok(cookie.includes(srv.token));
     const pair = cookie.split(";")[0];
-    const withCookie = await req(srv, { path: "/api/salud", auth: false, headers: { Cookie: pair } });
+    const withCookie = await req(srv, { path: "/api/estudio", auth: false, headers: { Cookie: pair } });
     assert.equal(withCookie.status, 200);
-    assert.equal((await req(srv, { path: "/api/salud", auth: false, headers: { Cookie: "ugc_galeria=" + "0".repeat(64) } })).status, 401);
+    assert.equal((await req(srv, { path: "/api/estudio", auth: false, headers: { Cookie: "ugc_galeria=" + "0".repeat(64) } })).status, 401);
     const bad = await req(srv, { path: "/?t=" + "0".repeat(64), auth: false });
     assert.equal(bad.status, 401);
     assert.equal(bad.headers["set-cookie"], undefined);
     // The token in the query string is only honored on "/".
-    assert.equal((await req(srv, { path: "/api/salud?t=" + srv.token, auth: false })).status, 401);
+    assert.equal((await req(srv, { path: "/api/estudio?t=" + srv.token, auth: false })).status, 401);
   });
 
   test("a Host header that is not 127.0.0.1:<port> or localhost:<port> is rejected (DNS rebinding)", async () => {
@@ -863,6 +866,28 @@ describe("index freshness", () => {
     });
   }
 
+  test("the mtime fallback also sees product photos (watch off)", async () => {
+    const s = estudioRico();
+    const srv = await iniciar(s, { watch: false, checkMs: 150 });
+    const P = "clientes/acme/MLA1";
+    const fotos = async () => (await getJson(srv, `/api/elemento?ruta=${encodeURIComponent(P)}`)).photos;
+    assert.deepEqual(await fotos(), [`${P}/fotos/f1.png`, `${P}/fotos/f2.png`]);
+    write(s, `${P}/fotos/f3.png`, PNG);
+    await esperar(async () => (await fotos()).length === 3);
+    assert.ok((await fotos()).includes(`${P}/fotos/f3.png`));
+    fs.rmSync(path.join(s, `${P}/fotos/f1.png`));
+    await esperar(async () => (await fotos()).length === 2);
+    assert.ok(!(await fotos()).includes(`${P}/fotos/f1.png`));
+    // The new photo can become the cover when the product has none named.
+    assert.ok((await getJson(srv, `/api/elementos?tipo=product&q=nandu`)).items[0].cover);
+    // Photos of a product that had no fotos/ folder yet.
+    const Q = "clientes/beta/MLB2";
+    fs.rmSync(path.join(s, Q, "fotos"), { recursive: true });
+    await esperar(async () => (await getJson(srv, `/api/elemento?ruta=${encodeURIComponent(Q)}`)).photos.length === 0);
+    write(s, `${Q}/fotos/nueva.png`, PNG);
+    await esperar(async () => (await getJson(srv, `/api/elemento?ruta=${encodeURIComponent(Q)}`)).photos.length === 1);
+  });
+
   test("/datos.js changes its build id when the index changes", async () => {
     const s = estudioRico();
     const srv = await iniciar(s);
@@ -935,6 +960,96 @@ function lanzar(studio, env = {}) {
   return { child, exited, log: () => log };
 }
 
+describe("health and slow start", () => {
+  test("GET /api/salud answers without a token, with only {ok, version, pid, listo}", async () => {
+    const srv = await iniciar(estudioRico());
+    const r = await req(srv, { path: "/api/salud", auth: false });
+    assert.equal(r.status, 200);
+    assert.deepEqual(Object.keys(r.json()).sort(), ["listo", "ok", "pid", "version"]);
+    assert.deepEqual({ ...r.json(), version: "x" }, { ok: true, version: "x", pid: process.pid, listo: true });
+    assert.equal(r.json().version, JSON.parse(fs.readFileSync(path.join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8")).version);
+    assert.ok(!r.text.includes(srv.studio), "no studio path");
+    // The Host check still applies; every other API path still needs the token.
+    assert.equal((await req(srv, { path: "/api/salud", auth: false, headers: { Host: "evil.example" } })).status, 403);
+    assert.equal((await req(srv, { path: "/api/estudio", auth: false })).status, 401);
+    assert.equal((await req(srv, { path: "/api/salud?x=1", auth: false })).status, 200);
+    // With the token it keeps the details the tools use.
+    const con = await getJson(srv, "/api/salud");
+    assert.equal(con.ok, true);
+    assert.equal(con.listo, true);
+    assert.equal(con.entities, 8);
+    assert.equal(con.studio, srv.studio);
+  });
+
+  test("servidor.json records the plugin root the server runs from", async () => {
+    const s = estudioBasico();
+    const srv = await iniciar(s);
+    const j = leer(s, ".galeria/servidor.json");
+    assert.equal(j.plugin, fs.realpathSync(PLUGIN));
+    assert.equal(j.version, JSON.parse(fs.readFileSync(path.join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8")).version);
+    assert.equal(srv.studio, fs.realpathSync(s));
+  });
+
+  test("it listens and writes servidor.json before the scan; until listo, data endpoints answer 503 + Retry-After and change nothing", async () => {
+    const s = estudioRico();
+    const srv = await iniciar(s, { scanDelayMs: 700, sinEsperar: true });
+    assert.ok(fs.existsSync(path.join(s, ".galeria", "servidor.json")), "servidor.json written before the scan");
+    const salud = await req(srv, { path: "/api/salud", auth: false });
+    assert.equal(salud.json().listo, false);
+    assert.equal(salud.json().ok, true);
+    for (const p of ["/api/elementos", "/api/estudio", "/api/papelera", `/api/elemento?ruta=${encodeURIComponent(C1)}`, "/datos.js"]) {
+      const r = await req(srv, { path: p });
+      assert.equal(r.status, 503, p);
+      assert.equal(r.headers["retry-after"], "1", p);
+      assert.match(r.json().error, /indexing|retry/i, p);
+    }
+    const before = fs.readFileSync(path.join(s, `${C1}/creativo.json`), "utf8");
+    const post = await req(srv, {
+      method: "POST", path: "/api/acciones", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ acciones: [{ tipo: "estado", ruta: C1, valor: "approved" }] }),
+    });
+    assert.equal(post.status, 503);
+    assert.equal(fs.readFileSync(path.join(s, `${C1}/creativo.json`), "utf8"), before);
+    // Not data: the page and the token rules keep working.
+    assert.equal((await req(srv, { path: "/" })).status, 200);
+    assert.equal((await req(srv, { path: "/api/elementos", auth: false })).status, 401);
+    await srv.listo;
+    assert.equal((await req(srv, { path: "/api/salud", auth: false })).json().listo, true);
+    assert.equal((await getJson(srv, "/api/elementos?archivados=1")).total, 8);
+    assert.equal((await req(srv, { path: "/datos.js" })).status, 200);
+  });
+
+  test("a change made while the index is not ready is picked up once it is", async () => {
+    const s = estudioRico();
+    const srv = await iniciar(s, { scanDelayMs: 500, sinEsperar: true, watch: false, checkMs: 100 });
+    await srv.listo;
+    write(s, "clientes/acme/MLA1/creativos/2026-03-09-x-tarde/creativo.json", { id: "2026-03-09-x-tarde", title: "Tarde", status: "draft" });
+    await esperar(async () => (await getJson(srv, "/api/elementos?q=tarde")).total === 1);
+  });
+
+  test("the UGC_GALERIA_TEST_SCAN_DELAY_MS hook slows the scan of a real process; servidor.json is there first", async () => {
+    const s = estudioBasico();
+    const p = lanzar(s, { UGC_GALERIA_TEST_SCAN_DELAY_MS: "800" });
+    const state = path.join(s, ".galeria", "servidor.json");
+    await esperar(() => fs.existsSync(state), 8000);
+    const j = JSON.parse(fs.readFileSync(state, "utf8"));
+    const salud = () => req({ token: j.token, port: j.port }, { path: "/api/salud", auth: false });
+    assert.equal((await salud()).json().listo, false);
+    await esperar(async () => (await salud()).json().listo === true, 5000);
+    assert.equal((await req({ token: j.token, port: j.port }, { path: "/api/elementos" })).status, 200);
+    p.child.kill("SIGTERM");
+    assert.equal((await p.exited).code, 0);
+  });
+
+  test("closing during the scan stops it cleanly and removes servidor.json", async () => {
+    const s = estudioBasico();
+    const srv = await iniciar(s, { scanDelayMs: 2000, sinEsperar: true });
+    await srv.close();
+    await srv.listo;
+    assert.ok(!fs.existsSync(path.join(s, ".galeria", "servidor.json")));
+  });
+});
+
 describe("process", () => {
   test("writes .galeria/servidor.json (mode 600) and removes it on idle shutdown", async () => {
     const s = estudioBasico();
@@ -942,7 +1057,7 @@ describe("process", () => {
     const state = path.join(s, ".galeria", "servidor.json");
     await esperar(() => fs.existsSync(state), 8000);
     const j = JSON.parse(fs.readFileSync(state, "utf8"));
-    assert.deepEqual(Object.keys(j).sort(), ["pid", "port", "startedAt", "token", "version"]);
+    assert.deepEqual(Object.keys(j).sort(), ["pid", "plugin", "port", "startedAt", "token", "version"]);
     assert.equal(j.pid, p.child.pid);
     assert.ok(j.port > 0);
     assert.match(j.token, /^[0-9a-f]{64}$/);

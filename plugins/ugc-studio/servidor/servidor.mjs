@@ -46,7 +46,7 @@ const IMAGENES = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
 const VIDEOS = new Set([".mp4", ".m4v", ".mov", ".webm"]);
 
 class ErrorHttp extends Error {
-  constructor(status, mensaje) { super(mensaje); this.status = status; }
+  constructor(status, mensaje, cabeceras = {}) { super(mensaje); this.status = status; this.cabeceras = cabeceras; }
 }
 class ErrorAccion extends Error {}
 
@@ -196,6 +196,9 @@ export async function crearServidor(opts = {}) {
   const idleMin = opts.idleMin ?? (env.UGC_GALERIA_IDLE_MIN !== undefined && env.UGC_GALERIA_IDLE_MIN !== "" ? Number(env.UGC_GALERIA_IDLE_MIN) : 30);
   const debounceMs = opts.debounceMs ?? Number(env.UGC_GALERIA_DEBOUNCE_MS || 200);
   const checkMs = opts.checkMs ?? 10000;
+  // Test-only hook: wait this long before the scan, to look at the server while it is not ready.
+  const scanDelayMs = opts.scanDelayMs ?? Number(env.UGC_GALERIA_TEST_SCAN_DELAY_MS || 0);
+  const pluginRaiz = (() => { try { return fs.realpathSync(path.join(AQUI, "..")); } catch { return path.resolve(AQUI, ".."); } })();
   const version = (() => {
     try { return JSON.parse(fs.readFileSync(path.join(AQUI, "..", ".claude-plugin", "plugin.json"), "utf8")).version || "0"; } catch { return "0"; }
   })();
@@ -227,6 +230,7 @@ export async function crearServidor(opts = {}) {
     let real;
     let st;
     const dirMtime = mtimeDe(dirAbs); // before listing, so a change in between shows up on the next check
+    const fotosMtime = kind === "product" ? mtimeDe(path.join(dirAbs, "fotos")) : null; // fotos/ is listed too
     try { real = fs.realpathSync(jsonAbs); st = fs.statSync(jsonAbs); } catch { return null; }
     if (!dentro(raiz, real) || !st.isFile()) return null;
     let texto;
@@ -239,7 +243,7 @@ export async function crearServidor(opts = {}) {
     } catch (err) { error = err.message; }
     const files = listarArchivos(dirAbs);
     if (kind === "product") files.push(...listarArchivos(path.join(dirAbs, "fotos"), "fotos/"));
-    const e = { kind, path: rel, texto, data, error, files, jsonMtime: st.mtimeMs, dirMtime };
+    const e = { kind, path: rel, texto, data, error, files, jsonMtime: st.mtimeMs, dirMtime, fotosMtime };
     e.firma = texto + "\0" + files.join("\0");
     derivar(e);
     return e;
@@ -355,12 +359,36 @@ export async function crearServidor(opts = {}) {
     volcar();
   }
 
-  function escaneoCompleto() {
+  // The first scan runs after the server is listening and gives the event loop back between
+  // products, so /api/salud keeps answering (listo: false) while it runs.
+  const cede = (() => {
+    let desde = Date.now();
+    return async () => {
+      if (Date.now() - desde < 10) return;
+      await new Promise((resolve) => setImmediate(resolve));
+      desde = Date.now();
+    };
+  })();
+
+  async function escaneoInicial() {
     entidades.clear();
     estructura.clear();
     cargarEstudio();
     escanearActores();
-    escanearClientes();
+    if (existeDir("clientes")) {
+      marcarEstructura("clientes");
+      for (const c of listarCarpetas(abs("clientes"))) {
+        if (cerrado) return;
+        const rel = `clientes/${c}`;
+        marcarEstructura(rel);
+        refrescar("brand", `${rel}/marca`);
+        for (const p of listarCarpetas(abs(rel)).filter((n) => n !== "marca")) {
+          escanearProducto(c, p);
+          await cede();
+          if (cerrado) return;
+        }
+      }
+    }
     marcar();
     volcar();
   }
@@ -374,7 +402,8 @@ export async function crearServidor(opts = {}) {
     }
     for (const e of [...entidades.values()]) {
       if (entidades.get(e.path) !== e) continue;
-      if (mtimeDe(abs(e.path)) !== e.dirMtime || mtimeDe(abs(e.path + "/" + JSON_NAME[e.kind])) !== e.jsonMtime) {
+      if (mtimeDe(abs(e.path)) !== e.dirMtime || mtimeDe(abs(e.path + "/" + JSON_NAME[e.kind])) !== e.jsonMtime
+        || (e.kind === "product" && mtimeDe(abs(e.path + "/fotos")) !== e.fotosMtime)) {
         aplicarCambio(e.path.split("/"));
       }
     }
@@ -864,6 +893,7 @@ export async function crearServidor(opts = {}) {
   const sockets = new Set();
   let idleTimer = null;
   let cerrado = false;
+  let listo = false; // the first scan is done
 
   function tokenValido(v) {
     if (typeof v !== "string") return false;
@@ -924,7 +954,12 @@ export async function crearServidor(opts = {}) {
       return;
     }
 
-    if (!tokenValido(req.headers["x-ugc-token"]) && !tokenValido(cookieDe(req))) throw new ErrorHttp(401, "token required");
+    const conToken = tokenValido(req.headers["x-ugc-token"]) || tokenValido(cookieDe(req));
+    // The launcher's health probe: no token, and nothing about the studio.
+    if (!conToken && (metodo === "GET" || metodo === "HEAD") && segs.length === 2 && segs[0] === "api" && segs[1] === "salud") {
+      return enviarJson(res, 200, { ok: true, version, pid: process.pid, listo }, { "Cache-Control": "no-store" });
+    }
+    if (!conToken) throw new ErrorHttp(401, "token required");
 
     if (!["GET", "HEAD", "POST"].includes(metodo)) throw new ErrorHttp(405, "method not allowed");
     let cuerpo;
@@ -938,6 +973,10 @@ export async function crearServidor(opts = {}) {
     }
 
     const [a, b] = segs;
+    // Until the first scan is done the index is empty: say so instead of answering with partial data.
+    if (!listo && ((a === "api" && !(segs.length === 2 && b === "salud")) || (a === "datos.js" && segs.length === 1))) {
+      throw new ErrorHttp(503, "the studio is still being indexed, retry in 1 second", { "Retry-After": "1" });
+    }
     if (a === "api") {
       const ruta = segs.slice(1).join("/");
       const rutaPost = { acciones: 1, "papelera/vaciar": 1 }[ruta];
@@ -953,7 +992,7 @@ export async function crearServidor(opts = {}) {
       }
       if (rutaPost) throw new ErrorHttp(405, "method not allowed");
       const nostore = { "Cache-Control": "no-store" };
-      if (ruta === "salud") return enviarJson(res, 200, { ok: true, version, studio: raiz, entities: entidades.size, scanMs: idx.scanMs }, nostore);
+      if (ruta === "salud") return enviarJson(res, 200, { ok: true, version, pid: process.pid, listo, studio: raiz, entities: entidades.size, scanMs: idx.scanMs }, nostore);
       if (ruta === "estudio") return enviarJson(res, 200, vistaEstudio(), nostore);
       if (ruta === "elementos") return enviarJson(res, 200, elementos(q), nostore);
       if (ruta === "papelera") return enviarJson(res, 200, { entries: entradasPapelera() }, nostore);
@@ -995,7 +1034,7 @@ export async function crearServidor(opts = {}) {
       if (res.headersSent) { res.destroy(); return; }
       const nuevo = status === 401 && req.method === "GET" && req.url && !req.url.startsWith("/api/")
         ? "UGC Studio gallery: access token required. Ask Claude: \"abrí la galería\".\n" : null;
-      const cab = { "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" };
+      const cab = { "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store", ...(err instanceof ErrorHttp ? err.cabeceras : {}) };
       try {
         if (nuevo) { res.writeHead(status, { ...cab, "Content-Type": "text/plain; charset=utf-8" }); res.end(nuevo); return; }
         const cuerpo = JSON.stringify({ error: status === 500 ? "internal error" : err.message });
@@ -1007,10 +1046,6 @@ export async function crearServidor(opts = {}) {
   });
   server.on("connection", (s) => { sockets.add(s); s.on("close", () => sockets.delete(s)); });
   server.on("clientError", (err, s) => { if (s.writable) s.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n"); });
-
-  const t0 = process.hrtime.bigint();
-  escaneoCompleto();
-  idx.scanMs = Math.round(Number(process.hrtime.bigint() - t0) / 1e6);
 
   // First free port from the base (4317 … 4337); base 0 asks the system for any.
   const intentos = basePort === 0 ? [0] : Array.from({ length: PORT_TRIES }, (_, i) => basePort + i);
@@ -1037,6 +1072,7 @@ export async function crearServidor(opts = {}) {
     if (pendientes.has(clave)) return;
     const t = setTimeout(() => {
       pendientes.delete(clave);
+      if (!listo) return; // the first scan reads the current state; revisarCambios runs when it ends
       try { aplicarCambio(segs); } catch (err) { console.error("servidor: index update failed:", err.message); }
     }, debounceMs);
     t.unref();
@@ -1060,6 +1096,7 @@ export async function crearServidor(opts = {}) {
     } catch { vigia = null; } // recursive watching is not available here: the periodic check covers it
   }
   const revisor = setInterval(() => {
+    if (!listo) return;
     try { revisarCambios(); } catch (err) { console.error("servidor: check failed:", err.message); }
   }, checkMs);
   revisor.unref();
@@ -1068,7 +1105,7 @@ export async function crearServidor(opts = {}) {
   const url = `http://127.0.0.1:${puerto}/?t=${token}`;
   fs.mkdirSync(path.dirname(estadoFile), { recursive: true });
   const tmpEstado = `${estadoFile}.tmp-${process.pid}`;
-  fs.writeFileSync(tmpEstado, JSON.stringify({ pid: process.pid, port: puerto, token, startedAt: isoSeg(), version }, null, 2) + "\n", { mode: 0o600 });
+  fs.writeFileSync(tmpEstado, JSON.stringify({ pid: process.pid, port: puerto, token, startedAt: isoSeg(), version, plugin: pluginRaiz }, null, 2) + "\n", { mode: 0o600 });
   fs.chmodSync(tmpEstado, 0o600);
   fs.renameSync(tmpEstado, estadoFile);
 
@@ -1096,7 +1133,24 @@ export async function crearServidor(opts = {}) {
     idleTimer.unref();
   }
 
-  return { server, port: puerto, token, url, studio: raiz, close: cerrar };
+  // The scan starts now: the server already listens and servidor.json is written. `listo` resolves
+  // when the index is complete (or the server was closed first).
+  const listoPromesa = (async () => {
+    const t0 = process.hrtime.bigint();
+    if (scanDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, scanDelayMs));
+    if (cerrado) return;
+    await escaneoInicial();
+    if (cerrado) return;
+    idx.scanMs = Math.round(Number(process.hrtime.bigint() - t0) / 1e6) - scanDelayMs;
+    listo = true;
+    try { revisarCambios(); } catch (err) { console.error("servidor: check failed:", err.message); } // what changed during the scan
+  })().catch((err) => {
+    // Serve what was indexed rather than answer 503 for ever; the periodic check fills the rest.
+    console.error("servidor: scan failed:", err && err.stack ? err.stack : err);
+    listo = true;
+  });
+
+  return { server, port: puerto, token, url, studio: raiz, close: cerrar, listo: listoPromesa };
 }
 
 // ---------- command line ----------

@@ -108,14 +108,22 @@ if (first.status !== 0) console.log(first.err);
 run("sh", [galeria, "stop"]);
 const cold = run("sh", [galeria, "start"]);
 const url = new URL(cold.out.trim());
-const token = url.searchParams.get("t");
 const base = `http://127.0.0.1:${url.port}`;
+// `start` prints the address without the token; `url` is the private one.
+const token = new URL(run("sh", [galeria, "url"]).out.trim()).searchParams.get("t");
 const get = async (p) => {
   const r = await fetch(base + p, { headers: { "X-UGC-Token": token } });
   return r.json();
 };
-const salud = await get("/api/salud");
-console.log(`server cold start (galeria.sh start until healthy): ${f1(cold.ms)} ms; full scan inside the server: ${salud.scanMs} ms; ${salud.entities} entities`);
+// The server listens first and indexes right after: wait for `listo`.
+const t0ready = performance.now();
+let salud;
+do {
+  salud = await get("/api/salud");
+  if (!salud.listo) await new Promise((r) => setTimeout(r, 5));
+} while (!salud.listo);
+const readyMs = cold.ms + (performance.now() - t0ready);
+console.log(`server cold start (galeria.sh start until it listens): ${f1(cold.ms)} ms; until the index is ready: ${f1(readyMs)} ms; full scan inside the server: ${salud.scanMs} ms; ${salud.entities} entities`);
 
 // ----- hook per change -----
 const targets = [];

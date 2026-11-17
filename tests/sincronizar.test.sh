@@ -77,7 +77,14 @@ run "$S" --resumen
 check "summary: exit 0" "$CODE" "0"
 case $OUT in *"Actors: 1. Products: 1. Videos: 1 (storyboard 0, draft 1"*) pass "summary: counts" ;; *) fail "summary: counts ($OUT)" ;; esac
 cmp -s "$CLAUDE_PLUGIN_ROOT/galeria/galeria.html" "$S/galeria.html" && pass "gallery copied" || fail "gallery copied"
-case $OUT in *"Gallery: http://127.0.0.1:"*"/?t="*) pass "summary: gallery URL" ;; *) fail "summary: gallery URL ($OUT)" ;; esac
+case $OUT in *"Gallery: http://127.0.0.1:"[0-9]*"/ "*) pass "summary: gallery address" ;; *) fail "summary: gallery address ($OUT)" ;; esac
+has "summary: says to ask for the gallery" "$OUT" "abrí la galería"
+TOKEN=$(state "$S" token)
+[ -n "$TOKEN" ] && pass "the server has a token" || fail "the server has a token"
+case "$OUT$ERR" in *"$TOKEN"* | *"?t="*) fail "summary: the access token is never printed" ;; *) pass "summary: the access token is never printed" ;; esac
+case $(cat "$TMP/err") in *"$TOKEN"*) fail "summary: no token on stderr" ;; *) pass "summary: no token on stderr" ;; esac
+run "$S"
+case "$OUT$ERR" in *"$TOKEN"* | *"?t="*) fail "hook run: the access token is never printed" ;; *) pass "hook run: the access token is never printed" ;; esac
 [ -e "$S/.galeria/datos.js" ] && fail "no datos.js is built" || pass "no datos.js is built"
 [ -f "$S/.galeria/validado" ] && pass "validation marker written" || fail "validation marker written"
 has "the hook started the gallery server" "$(api "$S" /api/salud 'r.ok + " " + r.entities')" "true 3"

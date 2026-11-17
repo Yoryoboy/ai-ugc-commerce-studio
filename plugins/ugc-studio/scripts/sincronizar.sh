@@ -5,7 +5,7 @@
 #                              changed (exit 2, message on stderr, if one is broken) and make sure
 #                              the gallery server is running
 #   sincronizar.sh --resumen   the same, validating every file, then print a summary of the studio
-#                              for Claude (stdout), with the gallery URL
+#                              for Claude (stdout), with the gallery address (never its access token)
 #
 # Runs from the plugin hooks (SessionStart and PostToolUse). Works in the folder given by
 # CLAUDE_PROJECT_DIR, or the current folder. Does nothing outside a studio (no studio.json).
@@ -136,13 +136,17 @@ if [ $SUMMARY -eq 0 ] && [ -f "$NOSERVER" ] && [ -n "$(find "$NOSERVER" -mmin -1
   try_start=0
 fi
 if [ $try_start -eq 1 ]; then
-  if started=$(CLAUDE_PROJECT_DIR="$ROOT" CLAUDE_PLUGIN_ROOT="$PLUGIN" sh "$PLUGIN/scripts/galeria.sh" start 2>&1); then
+  # The launcher prints the address without the access token; the token never goes into this
+  # output, which ends up in the conversation.
+  startlog=".galeria/arranque.err.$$"
+  if started=$(CLAUDE_PROJECT_DIR="$ROOT" CLAUDE_PLUGIN_ROOT="$PLUGIN" sh "$PLUGIN/scripts/galeria.sh" start 2>"$startlog"); then
     GALERIA_URL=$started
     rm -f "$NOSERVER"
   else
-    GALERIA_NOTE=$started
+    GALERIA_NOTE="$started $(cat "$startlog" 2>/dev/null)"
     : >"$NOSERVER"
   fi
+  rm -f "$startlog"
 fi
 
 # 4. Report.
@@ -180,7 +184,7 @@ status_count() {
 printf 'UGC Studio workspace: %s\n' "$ROOT"
 printf 'Contract: %s/references/workspace.md (save every file where it says).\n' "$PLUGIN"
 if [ -n "$GALERIA_URL" ]; then
-  printf 'Gallery: %s (local server; to open it for the user run `sh "%s/scripts/galeria.sh" open`, or ask Claude "abrí la galería").\n' \
+  printf 'Gallery: %s (local server, private: to open it for the user run `sh "%s/scripts/galeria.sh" open`, or ask Claude "abrí la galería"; never print or share the access link).\n' \
     "$GALERIA_URL" "$PLUGIN"
 else
   printf 'Gallery: the server did not start: %s\n' "$(printf '%s' "$GALERIA_NOTE" | tr '\n' ' ')"
