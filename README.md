@@ -27,7 +27,8 @@ Todo lo demás lo revisa e instala Claude durante el setup, solo si falta:
 | BI-MCP (`https://bi-mcp-290271124805.us-east4.run.app/mcp`) | Catálogo y ventas de cada cliente |
 | Engram | La memoria persistente: Claude se acuerda de lo que decidiste y de qué funcionó |
 | Google Chrome | Los creativos con texto en plantilla (Claude lo usa por detrás, sin abrir ventanas) |
-| Node y ffmpeg (solo Linux) | Validar los archivos del estudio y las miniaturas de los videos |
+| Node.js 18 o más | El servidor local de la galería (si falta, Claude instala una copia portátil en tu carpeta de usuario, sin permisos de administrador) |
+| ffmpeg (solo Linux) | Las miniaturas de videos e imágenes de la galería |
 
 El detalle de cómo se revisa e instala cada uno está en
 [`references/dependencias.md`](plugins/ugc-studio/references/dependencias.md).
@@ -96,7 +97,7 @@ palabras:
 | Elegir qué producto conviene | "¿A qué producto de este cliente le conviene un video?" |
 | Hacer un video | "Quiero un video para las patas de sommier" |
 | Hacer creativos para Meta Ads | "Haceme creativos para Meta de las patas de sommier" |
-| Ver todo lo creado | Doble clic en `galeria.html`, o "Abrí la galería" |
+| Ver todo lo creado | "Abrí la galería" (Claude la abre en tu navegador) |
 | Activar o revisar la memoria | "Activá la memoria" |
 | Pasar trabajo a otra compu | "Exportá el video de las patas", "Exportá el cliente Acme", "Exportá todo el studio" |
 | Traer trabajo de otra compu | Arrastrá el `.zip` al chat, o dejalo en `importaciones/` y escribí "Importá lo que dejé" |
@@ -132,13 +133,14 @@ solo el texto de una plantilla no cuesta nada.
 
 ```txt
 UGC Studio/
-├── galeria.html    la galería: abrila con doble clic
+├── galeria.html    la página de la galería (se abre con "Abrí la galería", no con doble clic)
 ├── actores/        un actor por carpeta: retrato, ángulos, ficha
 ├── clientes/       por cliente: kit de marca, y por producto: fotos, ficha, videos y creativos
 ├── exportaciones/  los paquetes .zip que exportás para otra compu
 ├── importaciones/  dejá acá los paquetes que te pasan (opcional)
 ├── studio.json     configuración del estudio (no lo borres)
-└── .galeria/       índice de la galería, se arma solo (carpeta oculta)
+├── .galeria/       datos internos de la galería y del servidor, se arman solos (carpeta oculta)
+└── .papelera/      lo que borrás desde la galería, se puede restaurar (carpeta oculta)
 ```
 
 Todo queda en tu computadora: borradores, finales en 1080p e imágenes. La galería solo muestra lo
@@ -192,7 +194,7 @@ normalmente no programa: hablale en castellano, simple, y decile en una línea q
    verificá.
 5. **Dependencias.** Seguí
    [`plugins/ugc-studio/references/dependencias.md`](plugins/ugc-studio/references/dependencias.md):
-   para cada una (Higgsfield, BI-MCP, Google Chrome y, en Linux, Node y ffmpeg) revisá si ya está
+   para cada una (Higgsfield, BI-MCP, Google Chrome, Node.js y, en Linux, ffmpeg) revisá si ya está
    y agregala solo si falta. Higgsfield y BI-MCP se agregan con `claude mcp add` y el usuario
    inicia sesión con `/mcp` en la sesión nueva.
 6. **Sesión nueva.** El plugin y la memoria cargan al abrir una sesión. Pedile al usuario que
@@ -201,7 +203,7 @@ normalmente no programa: hablale en castellano, simple, y decile en una línea q
    que escriba "Configurá el estudio". No podés reiniciarte solo.
 7. **Estudio.** En la sesión nueva, la skill `ugc-studio:setup` revisa conectores y memoria y
    crea el estudio. Al terminar tienen que existir `studio.json`, `actores/`, `clientes/`,
-   `galeria.html` y `.galeria/datos.js`.
+   `galeria.html` y que `galeria.sh open` abra la galería.
 8. **Contrato.** Dónde va cada archivo y qué tiene cada `.json` está en
    `plugins/ugc-studio/references/workspace.md`. Las skills y la galería dependen de que se
    respete.
@@ -217,18 +219,25 @@ references/engram.md      cómo instalar la memoria persistente (Engram); lo sig
 references/plantillas/    la plantilla HTML de los creativos con texto puesto encima
 hooks/hooks.json          al abrir la sesión y después de cada archivo que escribe Claude,
                           corre scripts/sincronizar.sh
-scripts/sincronizar.sh    copia la galería al estudio, valida los .json y arma .galeria/datos.js
-                          leyendo las carpetas; avisa a Claude si un .json está roto
+scripts/sincronizar.sh    copia la página de la galería al estudio, valida los .json que cambiaron,
+                          enciende el servidor si hace falta; avisa a Claude si un .json está roto
+scripts/galeria.sh        enciende, apaga y abre el servidor local de la galería (start, stop,
+                          status, url, open); usa Node 18+, del sistema o el portátil de
+                          ~/.ugc-studio/node
+servidor/servidor.mjs     el servidor de la galería (solo módulos de Node): indexa las carpetas en
+                          memoria, sirve archivos y miniaturas, y aplica acciones (estado,
+                          archivar, papelera, restaurar); solo escucha en 127.0.0.1 con token
 scripts/miniatura.sh      miniatura de un video (ffmpeg, o qlmanage + sips en Mac)
 scripts/componer.sh       pasa una plantilla de creativo a PNG con Google Chrome sin ventana
 scripts/exportar.sh       arma el paquete .zip de exportación con su manifest.json
 scripts/importar.sh       revisa un paquete, muestra qué trae y lo importa sin pisar nada
-galeria/galeria.html      la galería: lee datos.js y se recarga sola cada 3 segundos
+galeria/galeria.html      la galería: la sirve el servidor, lee /datos.js y se recarga sola cada 3 segundos
 ```
 
 Los hooks se instalan con el plugin y no hacen nada en carpetas que no son un estudio (sin
-`studio.json`). Los scripts usan solo herramientas que trae macOS; la única excepción es
-`componer.sh`, que necesita Google Chrome (o Chromium, Edge o Brave).
+`studio.json`). Los scripts usan solo herramientas que trae macOS; las excepciones son
+`componer.sh`, que necesita Google Chrome (o Chromium, Edge o Brave), y la galería, que necesita
+Node.js 18 o más (`servidor/servidor.mjs` no usa paquetes externos).
 
 ## Para desarrolladores
 
@@ -237,9 +246,10 @@ Los hooks se instalan con el plugin y no hacen nada en carpetas que no son un es
 plugins/ugc-studio/               el plugin: skills, referencias, hooks, scripts y galería
 ```
 
-Tests (necesitan Node; los de transferir, también unzip y zip o python3; los de componer, Chrome
-o Chromium): `sh tests/sincronizar.test.sh`, `sh tests/transferir.test.sh` y
-`sh tests/componer.test.sh`. Para
+Tests (necesitan Node 18+ y curl; los de transferir, también unzip y zip o python3; los de componer,
+Chrome o Chromium): `node --test tests/*.test.mjs` (servidor), `sh tests/sincronizar.test.sh`,
+`sh tests/galeria.test.sh`, `sh tests/transferir.test.sh` y `sh tests/componer.test.sh`.
+`sh tests/bench-galeria.sh` mide la galería con 2.000 creativos. Para
 probarlo contra un estudio real: `CLAUDE_PROJECT_DIR=<estudio> sh
 plugins/ugc-studio/scripts/sincronizar.sh --resumen`.
 

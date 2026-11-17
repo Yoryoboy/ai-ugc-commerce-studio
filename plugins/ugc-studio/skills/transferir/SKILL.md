@@ -91,7 +91,7 @@ actores no van a servir para videos nuevos y los links pueden no abrir."
    package that holds files outside `actores/` and `clientes/`, symbolic links or broken JSON is
    refused: tell the user it is not a valid UGC Studio package and ask who sent it.
 5. **Close.** Run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/sincronizar.sh" --resumen` and tell the user
-   what came in and that it is already in the gallery (it refreshes by itself).
+   what came in and that it is already in the gallery (it refreshes by itself; to open it run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open`).
    - `Drafts left out:` lists drafts that stayed in Higgsfield. Offer to download them: "3
      borradores quedaron como link a Higgsfield; si querés, los bajo ahora." To download one, find
      its version in `video.json` (`n` = the number in `borrador-vN.mp4`), get the video with the

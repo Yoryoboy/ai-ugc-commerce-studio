@@ -4,8 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UGC Studio</title>
+<link rel="icon" href="data:,">
 <!-- Copied into the studio folder by the ugc-studio plugin. Do not edit the copy: it is replaced
-     when the plugin updates. Data comes from .galeria/datos.js, rebuilt from the folders. -->
+     when the plugin updates. It needs the local gallery server (scripts/galeria.sh), which serves
+     this page and the API it reads (/api/...) over http; opened as a file it only says how to
+     open it. The server sets an HttpOnly cookie when the page is opened with its token, so every
+     request here is same-origin with credentials and no token ever appears in this page. -->
 <style>
 :root {
   --bg: #f3f5f6; --surface: #ffffff; --sunken: #e8ecee; --line: #d5dcdf;
@@ -28,59 +32,119 @@
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
-.wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 24px; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 120px; display: grid; gap: 20px; }
 h1, h2, h3 { margin: 0; line-height: 1.25; text-wrap: balance; }
-h1 { font-size: 1.6rem; }
+h1 { font-size: 1.5rem; }
 h2 { font-size: 1.15rem; }
 h3 { font-size: 1rem; }
 p { margin: 0; }
 a { color: var(--accent); }
-button { font: inherit; color: inherit; }
+button, input, select { font: inherit; color: inherit; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[tabindex="-1"]:focus { outline: none; }
 .muted { color: var(--muted); }
 .num { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip { position: absolute; left: 8px; top: -60px; z-index: 60; background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; }
+.skip:focus { top: 8px; }
 
-.top { display: grid; gap: 16px; }
-.top-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; }
-.meter { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
-.tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 2px; min-width: 0; }
+/* header */
+#app { display: grid; gap: 16px; align-content: start; min-width: 0; }
+.top { display: grid; gap: 14px; }
+.top-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.brand { font-size: 1.3rem; font-weight: 700; text-decoration: none; color: var(--fg); margin-right: 4px; }
+.field { display: grid; gap: 2px; min-width: 0; }
+.field select, .field input, .searchbox input { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 10px; min-width: 0; }
+.searchbox { flex: 1 1 240px; min-width: 0; display: flex; }
+.searchbox input { width: 100%; padding: 9px 12px; }
+.top-actions { margin-left: auto; }
+.meter { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; display: grid; gap: 2px; min-width: 0; }
 .tile.primary { background: var(--accent-soft); border-color: transparent; }
-.tile .value { font-family: var(--font-data); font-size: 1.5rem; font-variant-numeric: tabular-nums; }
-.tile .sub { font-size: 0.8rem; color: var(--muted); }
-
+.tile .value { font-family: var(--font-data); font-size: 1.45rem; font-variant-numeric: tabular-nums; }
+.tile .sub { font-size: 0.8rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.tile .sub a { color: var(--muted); }
+.tile .sub a:hover { color: var(--accent); }
+@media (max-width: 560px) { .selbar { padding: 8px 12px; } .selbar .btn { padding: 6px 10px; font-size: 0.85rem; } .selbar-in { gap: 6px 8px; } .meter { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .tile.primary { grid-column: 1 / -1; } .tile { padding: 10px 12px; } .wrap { padding-left: 12px; padding-right: 12px; } }
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
 .tabs a { padding: 10px 14px; text-decoration: none; color: var(--muted); font-weight: 600; border-bottom: 2px solid transparent; white-space: nowrap; }
 .tabs a[aria-current="page"] { color: var(--fg); border-bottom-color: var(--accent); }
 .tabs .count { font-family: var(--font-data); font-size: 0.8rem; margin-left: 6px; }
 
-.toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+/* connection banner */
+.banner { position: sticky; top: 0; z-index: 40; background: var(--bad); color: #ffffff; padding: 10px 16px; text-align: center; font-weight: 600; }
+.banner[hidden] { display: none; }
+.banner span { font-weight: 400; display: block; font-size: 0.85rem; opacity: 0.92; }
+
+.crumbs { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 0; font-size: 0.88rem; color: var(--muted); }
+.crumbs li + li::before { content: "›"; margin: 0 8px; color: var(--muted); }
+.crumbs a { color: var(--muted); }
+.crumbs a:hover { color: var(--accent); }
+.crumbs [aria-current] { color: var(--fg); font-weight: 600; overflow-wrap: anywhere; }
+
 .chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 12px; cursor: pointer; font-size: 0.85rem; }
 .chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 14px; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+.btn:hover:not(:disabled) { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.btn.danger { color: var(--bad); border-color: var(--bad); }
+.btn.danger.solid { background: var(--bad); color: #ffffff; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
-.section { display: grid; gap: 14px; }
+.section { display: grid; gap: 16px; min-width: 0; }
 .group { display: grid; gap: 12px; }
 .group-head { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; justify-content: space-between; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.page-head { display: grid; gap: 8px; }
+.page-head .lead { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; }
+
+.filters { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: end; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
+.filters .field { flex: 0 1 auto; }
+.filters input[type="date"] { min-width: 9.5em; }
+
+.list-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; min-height: 28px; }
+.checkline { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; }
+.checkline input { width: 18px; height: 18px; accent-color: var(--accent); }
+.list-foot { display: grid; justify-items: center; gap: 6px; padding-top: 8px; }
+
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(180px, 42vw), 1fr)); gap: 16px; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: grid; grid-template-rows: auto 1fr; min-width: 0; text-decoration: none; color: inherit; }
-a.card:hover { border-color: var(--accent); }
+.item { position: relative; display: block; }
+.item.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.item.archived .media img { opacity: 0.6; }
+.cardlink { display: grid; grid-template-rows: auto 1fr; height: 100%; text-decoration: none; color: inherit; }
+.card:hover, .item:hover { border-color: var(--accent); }
 .media { aspect-ratio: 9 / 16; background: var(--sunken); display: grid; place-items: center; position: relative; overflow: hidden; }
 .media img, .media video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .media .placeholder { padding: 16px; text-align: center; color: var(--muted); font-size: 0.85rem; }
-.media .badge { position: absolute; left: 8px; top: 8px; font-size: 0.75rem; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: rgba(0, 0, 0, 0.6); color: #ffffff; }
+.media .badge { position: absolute; right: 8px; top: 8px; font-size: 0.75rem; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: rgba(0, 0, 0, 0.6); color: #ffffff; }
+.creative .media, .actor .media { aspect-ratio: 4 / 5; }
+.product .media { aspect-ratio: 1 / 1; }
+.client .media { aspect-ratio: 16 / 10; }
+.creative.carousel .media img { object-fit: contain; }
+.pick { position: absolute; left: 8px; top: 8px; z-index: 2; width: 30px; height: 30px; display: grid; place-items: center; background: rgba(0, 0, 0, 0.55); border-radius: 8px; cursor: pointer; }
+.pick input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .card-body { padding: 12px 14px 14px; display: grid; gap: 4px; align-content: start; min-width: 0; }
 .card-body h3 { overflow-wrap: anywhere; }
 .meta { font-size: 0.82rem; color: var(--muted); overflow-wrap: anywhere; }
+.pills { display: flex; flex-wrap: wrap; gap: 4px; }
 .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; justify-self: start; }
 .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .st-storyboard { background: var(--info-soft); color: var(--info); }
 .st-draft { background: var(--warn-soft); color: var(--warn); }
-.st-final { background: var(--ok-soft); color: var(--ok); }
-.st-discarded { background: var(--off-soft); color: var(--off); }
-.st-approved { background: var(--ok-soft); color: var(--ok); }
+.st-final, .st-approved { background: var(--ok-soft); color: var(--ok); }
+.st-discarded, .st-archived { background: var(--off-soft); color: var(--off); }
 .st-broken { background: var(--bad-soft); color: var(--bad); }
+.client .initial { font-size: 3rem; font-weight: 700; color: var(--accent); }
+.client .media { background: var(--accent-soft); }
 
+.subgroup { display: grid; gap: 10px; }
+.subhead { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; }
+
+/* detail */
 .detail { display: grid; gap: 20px; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); align-items: start; }
 @media (max-width: 760px) { .detail { grid-template-columns: minmax(0, 1fr); } }
 .player { display: grid; gap: 10px; }
@@ -94,13 +158,8 @@ a.card:hover { border-color: var(--accent); }
 .scenes { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
 .scenes a { display: grid; gap: 4px; text-decoration: none; color: var(--muted); font-size: 0.8rem; }
 .scenes img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: var(--sunken); }
-.back { justify-self: start; }
-
-.actor .media, .creative .media { aspect-ratio: 4 / 5; }
-.subgroup { display: grid; gap: 10px; }
-.subhead { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; }
 .pieces { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; }
-.piece { flex: 0 0 auto; display: grid; gap: 6px; width: min(300px, 78vw); }
+.piece { flex: 0 0 auto; display: grid; gap: 6px; width: min(300px, 78vw); margin: 0; }
 .piece.r9x16 { width: min(225px, 60vw); }
 @media (max-width: 560px) { .pieces.static { gap: 12px; } .pieces.static .piece { width: 50vw; } .pieces.static .piece.r9x16 { width: 33vw; } }
 .cols .fact { align-content: start; }
@@ -110,7 +169,6 @@ a.card:hover { border-color: var(--accent); }
 .piece.r1x1 .shot img { aspect-ratio: 1 / 1; }
 /* Carousel cards (tarjeta-N) keep their own ratio (1:1 or 4:5): never cropped. */
 .piece.tarjeta .shot img { aspect-ratio: auto; height: auto; object-fit: contain; }
-.creative.carousel .media img { object-fit: contain; }
 .piece .placeholder { aspect-ratio: 4 / 5; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--muted); font-size: 0.85rem; }
 .piece.r9x16 .placeholder { aspect-ratio: 9 / 16; }
 .olds { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); }
@@ -128,60 +186,134 @@ a.card:hover { border-color: var(--accent); }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag { font-size: 0.75rem; background: var(--sunken); border-radius: 6px; padding: 2px 8px; }
 .tag.no { text-decoration: line-through; color: var(--muted); }
-.links { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.85rem; }
+.links { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.85rem; align-items: center; }
+.photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(200px, 44vw), 1fr)); gap: 14px; }
+.photos a { display: block; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--sunken); }
+.photos img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; }
 
 .rows { display: grid; gap: 8px; }
 .row { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px 10px 10px; display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; }
+.row.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 .row img, .row .thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; background: var(--sunken); }
+.row .thumb { display: grid; place-items: center; font-size: 1.3rem; color: var(--muted); }
 .row .title { font-weight: 600; overflow-wrap: anywhere; }
 .row button.thumb-btn { padding: 0; border: 0; background: none; cursor: pointer; border-radius: 8px; }
 .row button.thumb-btn:disabled { cursor: default; }
+.row .pickcell { display: grid; place-items: center; width: 56px; height: 56px; }
+.row .pickcell input { width: 20px; height: 20px; accent-color: var(--accent); }
 @media (max-width: 560px) { .row { grid-template-columns: 56px minmax(0, 1fr); } .row .end { grid-column: 2; } }
 
-.top-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
-.chip.export { white-space: nowrap; }
-.chip.export:hover { border-color: var(--accent); }
+/* selection bar, results, toast, dialogs */
+.selbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.18); padding: 10px 16px; }
+.selbar[hidden] { display: none; }
+.selbar-in { max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.selbar .count { font-weight: 700; margin-right: 6px; }
+.selbar .spacer { margin-left: auto; }
+.result { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 26; width: min(94vw, 560px); max-height: 46vh; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--ok); border-radius: var(--radius); padding: 12px 14px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3); display: grid; gap: 8px; }
+.result[hidden] { display: none; }
+.result.fail { border-left-color: var(--bad); }
+body.has-bar .result { bottom: 92px; }
+.result-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.result ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 0.88rem; }
+.result li.bad { color: var(--bad); }
+.result summary { cursor: pointer; font-size: 0.88rem; color: var(--muted); }
 .estado { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 20; max-width: min(92vw, 460px); background: var(--fg); color: var(--bg); border-radius: var(--radius); padding: 10px 16px; font-size: 0.9rem; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25); }
+body.has-bar .estado { bottom: 92px; }
 .estado:empty { display: none; }
-.manual { position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, 0.5); display: grid; place-items: center; padding: 16px; }
+.manual { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, 0.5); display: grid; place-items: center; padding: 16px; }
 .manual[hidden] { display: none; }
 .manual-box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 10px; width: min(100%, 520px); }
 .manual textarea { font: inherit; font-family: var(--font-data); font-size: 0.85rem; width: 100%; min-height: 5.5em; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); resize: vertical; }
+.manual ul { margin: 0; padding-left: 18px; font-size: 0.9rem; }
 .empty { background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius); padding: 28px 20px; display: grid; gap: 6px; text-align: center; justify-items: center; }
 .empty p { max-width: 56ch; }
 .notice { font-size: 0.85rem; padding: 10px 12px; border-radius: 8px; background: var(--bad-soft); color: var(--bad); overflow-wrap: anywhere; }
 .foot { font-size: 0.8rem; color: var(--muted); }
+.tag.type { background: var(--info-soft); color: var(--info); font-weight: 600; }
+.trash-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.chip.export { white-space: nowrap; }
+.chip.export:hover { border-color: var(--accent); }
+.skeleton { color: var(--muted); padding: 24px 0; text-align: center; }
 </style>
 </head>
 <body>
-<main class="wrap" id="app" aria-live="polite">
-  <div class="empty">
-    <h2>Cargando la galería…</h2>
-    <p class="muted">Si este mensaje no se va, abrí Claude en esta carpeta: arma la galería solo.</p>
-  </div>
-</main>
-<!-- Outside #app so the 3 s re-render never wipes the message or the manual-copy panel. -->
+<a class="skip" id="saltar" href="#app">Saltar al contenido</a>
+<div class="banner" id="banner" role="alert" hidden></div>
+<div class="wrap">
+  <header class="top" id="cabecera">
+    <div class="top-row">
+      <a class="brand" href="#/">UGC Studio</a>
+      <label class="field" for="cliente-sel">
+        <span class="label">Cliente</span>
+        <select id="cliente-sel"><option value="">Todos</option></select>
+      </label>
+      <form class="searchbox" role="search" id="buscador">
+        <label class="vh" for="buscar">Buscar en la galería</label>
+        <input id="buscar" type="search" placeholder="Buscar creativos, videos, actores…" autocomplete="off">
+      </form>
+      <div class="top-actions" id="export-todo"></div>
+    </div>
+    <div class="meter" id="medidor" aria-label="Resumen del estudio"></div>
+    <nav class="tabs" id="nav" aria-label="Secciones">
+      <a href="#/" data-nav="home">Inicio</a>
+      <a href="#/actores" data-nav="actores">Actores</a>
+      <a href="#/papelera" data-nav="papelera">Papelera</a>
+    </nav>
+  </header>
+  <main id="app" tabindex="-1">
+    <div class="empty">
+      <h2>Cargando la galería…</h2>
+      <p class="muted">Si este mensaje no se va, pedile a Claude: abrí la galería.</p>
+    </div>
+  </main>
+</div>
+<div class="selbar" id="barra" role="region" aria-label="Acciones sobre la selección" hidden></div>
+<div class="result" id="resultado" hidden></div>
+<!-- Outside #app so re-rendering a view never wipes the message or the dialogs. -->
 <div class="estado" id="estado" role="status" aria-live="polite"></div>
 <div class="manual" id="manual" role="dialog" aria-modal="true" aria-labelledby="manual-titulo" hidden></div>
+<div class="manual" id="dialogo" role="alertdialog" aria-modal="true" aria-labelledby="dialogo-titulo" hidden></div>
 <script>
 "use strict";
 
-const DATA_FILE = ".galeria/datos.js";
-const REFRESH_MS = 3000;
-const STATUS = {
-  storyboard: "Storyboard por aprobar",
-  draft: "Por revisar",
-  final: "Final",
-  discarded: "Descartado",
+const PER_PAGE = 48;
+const SALUD_MS = 5000;
+const LS_CLIENTE = "ugc-galeria-cliente";
+const ESTADO = {
+  storyboard: "Storyboard por aprobar", draft: "Por revisar", approved: "Aprobado", final: "Final", discarded: "Descartado",
 };
-const CREATIVE_STATUS = { draft: "Por revisar", approved: "Aprobado", discarded: "Descartado" };
-const SLOT_ORDER = ["4x5", "9x16", "1x1"];
+const ESTADOS_DE = {
+  creative: ["draft", "approved", "discarded"],
+  video: ["storyboard", "draft", "final", "discarded"],
+};
+const KIND_LABEL = { creative: "Creativo", video: "Video", actor: "Actor", product: "Producto", brand: "Marca" };
 const PLATFORM = { mercadolibre: "Mercado Libre", vtex: "VTEX", tiendanube: "Tiendanube" };
+const RESERVADAS = new Set(["actores", "buscar", "elemento", "papelera"]);
+const SWATCH_ROLES = [["primary", "Principal"], ["accent", "Acento"], ["text", "Texto"], ["background", "Fondo"]];
+const CONN_MSG = {
+  down: ["La galería se desconectó: pedile a Claude «abrí la galería»", "Mientras tanto no se puede aprobar, archivar ni borrar nada. Cuando vuelva, esta página se reconecta sola."],
+  token: ["Abrí la galería de nuevo desde Claude", "Esta pestaña quedó con un acceso viejo. Pedile a Claude «abrí la galería» y usá la pestaña nueva."],
+};
+// Actions of the selection bar and of the detail views: how they map to POST /api/acciones.
+const ACCION = {
+  aprobar: { tipo: "estado", valor: "approved", past: "aprobados", one: "aprobado", solo: ["creative"], skip: "Solo los creativos se aprueban acá: un video se aprueba cuando Claude lo finaliza." },
+  revisar: { tipo: "estado", valor: "draft", past: "marcados por revisar", one: "marcado por revisar", solo: ["creative"], skip: "Solo aplica a creativos." },
+  descartar: { tipo: "estado", valor: "discarded", past: "descartados", one: "descartado", solo: ["creative", "video"], skip: "Los actores y productos no se descartan: archivalos o mandalos a la papelera." },
+  reabrir: { tipo: "estado", valor: "draft", past: "reabiertos", one: "reabierto", solo: ["creative", "video"], cuando: (e) => e.status === "discarded", skip: "Solo se reabren los creativos y videos descartados." },
+  limpiarVersiones: { tipo: "limpiarVersiones", past: "limpiados", one: "limpiado", solo: ["creative", "video"], skip: "Solo los creativos y los videos tienen versiones para limpiar." },
+  archivar: { tipo: "archivar", past: "archivados", one: "archivado" },
+  desarchivar: { tipo: "desarchivar", past: "desarchivados", one: "desarchivado" },
+  papelera: { tipo: "papelera", past: "enviados a la papelera", one: "enviado a la papelera" },
+  restaurar: { tipo: "restaurar", past: "restaurados", one: "restaurado" },
+};
 
-let model = null;
-let lastBuild = null;
-let videoFilter = "all";
-let creativeFilter = "all";
+const state = {
+  conn: "ok", busy: false, pendingRefresh: false, estudio: null, actores: null, signal: null,
+  selection: new Map(), barMode: "items", view: null, productos: new Map(), route: null,
+};
+let gen = 0;
+let statusTimer = null;
+let firstRoute = true;
 
 // ---------- helpers ----------
 
@@ -198,29 +330,31 @@ function h(tag, attrs, ...children) {
   }
   return el;
 }
+const $ = (id) => document.getElementById(id);
+// replaceChildren that skips the empty slots of conditional children (null would be printed as text).
+const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter((k) => k !== null && k !== undefined && k !== false));
+const enc = encodeURIComponent;
 
 // Relative URL of a file inside the studio folder, safe for spaces and accents.
-function url(path) {
-  return path.split("/").map(encodeURIComponent).join("/");
-}
-
-// External links from the studio files: only http(s), never javascript: or other schemes.
-function safeUrl(u) {
-  return typeof u === "string" && /^https?:\/\//i.test(u) ? u : null;
-}
+const url = (path) => "/" + path.split("/").map(enc).join("/");
+// Thumbnail made by the server (w: 240, 480 or 960).
+const thumb = (path, w) => "/miniatura/" + path.split("/").map(enc).join("/") + "?w=" + w;
+const qs = (o) => new URLSearchParams(Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== "")).toString();
+const safeUrl = (u) => (typeof u === "string" && /^https?:\/\//i.test(u) ? u : null);
+const plural = (n, one, many) => n + " " + (n === 1 ? one : many);
+const lsGet = () => { try { return localStorage.getItem(LS_CLIENTE) || ""; } catch (e) { return ""; } };
+const lsSet = (v) => { try { localStorage.setItem(LS_CLIENTE, v); } catch (e) { /* private mode */ } };
 
 function fmtCredits(n) {
   if (typeof n !== "number" || !isFinite(n)) return "—";
   return n.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 }
-
 function fmtDate(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d)) return "";
   return d.toLocaleString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
-
 // "2026-11-16-patas-cama" -> "16 nov" (the batch id starts with its day).
 function fmtBatchDay(batch) {
   const r = /^(\d{4}-\d{2}-\d{2})/.exec(String(batch || ""));
@@ -228,21 +362,330 @@ function fmtBatchDay(batch) {
   if (!d || isNaN(d)) return "";
   return d.toLocaleDateString("es-AR", { day: "numeric", month: "short", timeZone: "UTC" });
 }
-
-function fmtPrice(p) {
-  if (typeof p.price !== "number") return "";
-  return p.price.toLocaleString("es-AR", { style: "currency", currency: p.currency || "ARS", maximumFractionDigits: 0 });
+function fmtPrice(j) {
+  if (typeof j.price !== "number") return "";
+  return j.price.toLocaleString("es-AR", { style: "currency", currency: j.currency || "ARS", maximumFractionDigits: 0 });
+}
+const clientName = (id) => {
+  const c = state.estudio && state.estudio.clients.find((x) => x.profileId === id);
+  return c ? c.name : id;
+};
+const actorName = (id) => {
+  const a = state.actores && state.actores.find((x) => x.actorId === id);
+  return a ? a.title : id;
+};
+async function pool(tasks, n) {
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, tasks.length) }, async () => {
+    while (i < tasks.length) { const t = tasks[i++]; try { await t(); } catch (e) { /* the card keeps its placeholder */ } }
+  }));
 }
 
-function plural(n, one, many) {
-  return n + " " + (n === 1 ? one : many);
+// ---------- API and connection ----------
+
+class ApiError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+}
+
+async function api(path, opts) {
+  let res;
+  try {
+    res = await fetch(path, { credentials: "same-origin", cache: "no-store", ...(opts || {}) });
+  } catch (e) {
+    setConn("down");
+    throw new ApiError(0, "sin conexión");
+  }
+  if (res.status === 401) { setConn("token"); throw new ApiError(401, "acceso vencido"); }
+  let body = null;
+  try { body = await res.json(); } catch (e) { /* not JSON */ }
+  if (!res.ok) throw new ApiError(res.status, (body && body.error) || "HTTP " + res.status);
+  return body;
+}
+
+function setConn(next) {
+  if (state.conn === next) return;
+  state.conn = next;
+  const banner = $("banner");
+  if (next === "ok") banner.hidden = true;
+  else banner.replaceChildren(CONN_MSG[next][0], h("span", {}, CONN_MSG[next][1])), banner.hidden = false;
+  applyConn();
+}
+
+// Buttons that change data stay disabled while the server is not reachable or an action is running.
+function applyConn() {
+  for (const b of document.querySelectorAll("[data-act]")) {
+    b.disabled = state.conn !== "ok" || state.busy || b.dataset.na === "1";
+  }
+}
+
+async function loadEstudio() {
+  const next = await api("/api/estudio");
+  const changed = !state.estudio || JSON.stringify(next) !== JSON.stringify(state.estudio);
+  state.estudio = next;
+  if (changed) renderHeader();
+}
+
+async function loadActores() {
+  try {
+    const r = await api("/api/elementos?" + qs({ tipo: "actor", archivados: "1", porPagina: 200 }));
+    state.actores = r.items;
+  } catch (e) { if (!state.actores) state.actores = []; }
+}
+
+// A signal that aborts after `ms`. AbortSignal.timeout does not exist before Safari 16 (and Chrome
+// 103): there a plain AbortController and timer do the same, and `clear()` drops the timer.
+function timeoutSignal(ms) {
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") return { signal: AbortSignal.timeout(ms), clear() {} };
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  return { signal: ctl.signal, clear: () => clearTimeout(timer) };
+}
+
+async function poll() {
+  if (poll.running) return;
+  poll.running = true;
+  try {
+    let res;
+    const limit = timeoutSignal(4000);
+    try {
+      res = await fetch("/api/salud", { credentials: "same-origin", cache: "no-store", signal: limit.signal });
+    } catch (e) { setConn("down"); return; } finally { limit.clear(); }
+    if (res.status === 401) { setConn("token"); return; }
+    if (!res.ok) { setConn("down"); return; }
+    const salud = await res.json().catch(() => null);
+    if (!salud) { setConn("down"); return; }
+    if (salud.listo === false) return; // still scanning the studio: nothing to check yet
+    const before = state.estudio ? JSON.stringify(state.estudio) : null;
+    // The server may answer /api/salud without the cookie: an authenticated call tells whether this tab still has access.
+    try { await loadEstudio(); } catch (e) { return; }
+    // First data after the page was opened while the server was still indexing (503), or after a
+    // reconnection: draw the current view, which still shows the empty "no data" state.
+    if (state.conn !== "ok" || before === null) {
+      setConn("ok");
+      await loadActores();
+      await route(true);
+      return;
+    }
+    // The studio changed: redraw the view, unless the user is in the middle of something (a
+    // selection, a dialog, a playing video). The change is remembered and drawn once they are idle.
+    if (before !== null && before !== JSON.stringify(state.estudio)) state.pendingRefresh = true;
+    if (state.pendingRefresh && idle()) {
+      state.pendingRefresh = false;
+      await loadActores();
+      await refreshView(true);
+    }
+  } finally { poll.running = false; }
+}
+
+// Nothing the user is doing would be lost by redrawing the view under them.
+function idle() {
+  const playing = [...document.querySelectorAll("video")].some((v) => !v.paused && !v.ended);
+  const typing = document.activeElement && document.activeElement.matches && document.activeElement.matches("input, select, textarea");
+  return !playing && !typing && state.selection.size === 0 && !state.busy && $("dialogo").hidden && $("manual").hidden;
+}
+
+async function refreshView(silent) {
+  if (state.view && state.view.refresh) {
+    try { await state.view.refresh(); } catch (e) { /* the banner already says why */ }
+  } else await route(silent);
+}
+
+// ---------- routes ----------
+
+function parseHash() {
+  const raw = location.hash.replace(/^#/, "");
+  const i = raw.indexOf("?");
+  const pathPart = i < 0 ? raw : raw.slice(0, i);
+  const params = new URLSearchParams(i < 0 ? "" : raw.slice(i + 1));
+  const segs = pathPart.split("/").filter(Boolean).map((s) => { try { return decodeURIComponent(s); } catch (e) { return s; } });
+  const r = { name: "home", params, segs };
+  const [a, b, c] = segs;
+  if (!a) return r;
+  if (a === "actores") return { ...r, name: "actores" };
+  if (a === "buscar") return { ...r, name: "buscar" };
+  if (a === "papelera") return { ...r, name: "papelera" };
+  if (a === "elemento") return { ...r, name: "elemento", ruta: segs.slice(1).join("/") };
+  if (!b) return { ...r, name: "cliente", cliente: a };
+  return { ...r, name: "producto", cliente: a, producto: b, tab: ["creativos", "videos", "fotos"].includes(c) ? c : null };
+}
+
+const hClient = (c) => "#/" + enc(c);
+const hProduct = (c, p, tab, params) => "#/" + [c, p, tab].filter(Boolean).map(enc).join("/") + (params && params.toString() ? "?" + params : "");
+const hItem = (path) => "#/elemento/" + path.split("/").map(enc).join("/");
+const hSearch = (params) => "#/buscar" + (params && params.toString() ? "?" + params : "");
+function hrefFor(it) {
+  if (it.kind === "product") return hProduct(it.profileId, it.productId);
+  if (it.kind === "brand") return hClient(it.profileId);
+  return hItem(it.path);
+}
+// Updates the hash without a new history entry or a re-render (filters).
+function replaceHash(hash) { history.replaceState(null, "", hash); }
+
+async function route(silent) {
+  const r = parseHash();
+  const my = ++gen;
+  state.pendingRefresh = false; // this draw reads the current data
+  state.route = r;
+  state.view = null;
+  state.barMode = "items";
+  if (!silent) clearSelection();
+  if (!state.estudio) {
+    try { await loadEstudio(); } catch (e) { /* shown below */ }
+  }
+  if (my !== gen) return;
+  const known = (id) => !!id && !!state.estudio && state.estudio.clients.some((c) => c.profileId === id);
+  const fromPath = r.name === "elemento" && /^clientes\//.test(r.ruta) ? r.ruta.split("/")[1] : null;
+  if (known(r.cliente)) {
+    lsSet(r.cliente);
+    $("cliente-sel").value = r.cliente;
+  } else if (r.name === "buscar") {
+    $("cliente-sel").value = known(r.params.get("cliente")) ? r.params.get("cliente") : "";
+  } else if (known(fromPath)) {
+    $("cliente-sel").value = fromPath;
+  } else if (r.name === "home" && firstRoute) {
+    const saved = lsGet();
+    if (saved && state.estudio && state.estudio.clients.some((c) => c.profileId === saved)) {
+      firstRoute = false;
+      location.replace(hClient(saved));
+      return;
+    }
+  }
+  firstRoute = false;
+  if (r.name === "home") $("cliente-sel").value = "";
+  for (const a of $("nav").querySelectorAll("a")) a.removeAttribute("aria-current");
+  const navKey = { home: "home", cliente: "home", producto: "home", elemento: "home", buscar: "", actores: "actores", papelera: "papelera" }[r.name];
+  const navEl = navKey && $("nav").querySelector('[data-nav="' + navKey + '"]');
+  if (navEl && r.name === "home") navEl.setAttribute("aria-current", "page");
+  else if (navEl && (r.name === "actores" || r.name === "papelera")) navEl.setAttribute("aria-current", "page");
+  syncSearchBox(r);
+
+  if (!state.estudio) { mount(offlineEmpty()); return; }
+  try {
+    if (!state.actores) await loadActores();
+    if (r.name === "home") await viewHome(r, my);
+    else if (r.name === "cliente") await viewCliente(r, my);
+    else if (r.name === "producto") await viewProducto(r, my);
+    else if (r.name === "buscar") await viewBuscar(r, my);
+    else if (r.name === "actores") await viewActores(r, my);
+    else if (r.name === "papelera") await viewPapelera(r, my);
+    else if (r.name === "elemento") await viewElemento(r, my);
+  } catch (e) {
+    if (my !== gen) return;
+    if (e instanceof ApiError && (e.status === 0 || e.status === 401)) mount(offlineEmpty());
+    else mount(h("div", { class: "empty" }, h("h2", {}, "No se pudo mostrar esto"), h("p", { class: "muted" }, e.message || String(e)),
+      h("a", { href: "#/" }, "Ir al inicio")));
+  }
+  if (my === gen && !silent) {
+    const first = $("app").querySelector("h1, h2");
+    if (first) { first.setAttribute("tabindex", "-1"); if (!document.activeElement || document.activeElement === document.body || document.activeElement === $("app")) first.focus({ preventScroll: true }); }
+    window.scrollTo(0, 0);
+  }
+}
+
+function mount(...nodes) {
+  $("app").replaceChildren(...nodes.flat().filter(Boolean));
+}
+
+function offlineEmpty() {
+  const token = state.conn === "token";
+  return h("div", { class: "empty" },
+    h("h2", {}, token ? "Abrí la galería de nuevo desde Claude" : "No llega la información de la galería"),
+    h("p", { class: "muted" }, token ? "Esta pestaña quedó con un acceso viejo. Pedile a Claude: abrí la galería." : "Pedile a Claude: abrí la galería. Cuando el servidor vuelva, esta página se reconecta sola."));
+}
+
+function title(text) { document.title = text ? text + " · UGC Studio" : "UGC Studio"; }
+
+function crumbs(items) {
+  return h("nav", { "aria-label": "Ruta" }, h("ol", { class: "crumbs" }, items.map((it, i) =>
+    h("li", i === items.length - 1 ? { "aria-current": "page" } : {}, it.href && i < items.length - 1 ? h("a", { href: it.href }, it.text) : it.text))));
+}
+
+// ---------- header ----------
+
+function renderHeader() {
+  const e = state.estudio;
+  const sel = $("cliente-sel");
+  const current = sel.value;
+  sel.replaceChildren(h("option", { value: "" }, "Todos"), ...e.clients.map((c) => h("option", { value: c.profileId }, c.name)));
+  sel.value = e.clients.some((c) => c.profileId === current) ? current : "";
+
+  const credits = (e.studio && e.studio.credits) || {};
+  const st = (kind) => (e.counts.status && e.counts.status[kind]) || {};
+  const byKind = e.counts.byKind || {};
+  const cr = st("creative");
+  const vi = st("video");
+  const used = e.creditsUsed;
+  const statLink = (text, tipo, estado) => h("a", { href: hSearch(new URLSearchParams({ tipo, estado })) }, text);
+  const review = (cr.draft || 0) + (vi.storyboard || 0) + (vi.draft || 0);
+  $("medidor").replaceChildren(
+    h("div", { class: "tile primary" },
+      h("span", { class: "label" }, "Créditos disponibles"),
+      h("span", { class: "value" }, fmtCredits(credits.available)),
+      h("span", { class: "sub" }, credits.checkedAt ? "Al " + fmtDate(credits.checkedAt) : "Pedile a Claude que los revise")),
+    h("div", { class: "tile" },
+      h("span", { class: "label" }, "Créditos usados"),
+      h("span", { class: "value" }, fmtCredits(used)),
+      h("span", { class: "sub" }, "En actores, videos y creativos")),
+    h("div", { class: "tile" },
+      h("span", { class: "label" }, "Creativos"),
+      h("span", { class: "value" }, String(byKind.creative || 0)),
+      h("span", { class: "sub" },
+        statLink((cr.draft || 0) + " por revisar", "creativo", "draft"),
+        statLink((cr.approved || 0) + " aprobados", "creativo", "approved"),
+        statLink((cr.discarded || 0) + " descartados", "creativo", "discarded"))),
+    h("div", { class: "tile" },
+      h("span", { class: "label" }, "Videos"),
+      h("span", { class: "value" }, String(byKind.video || 0)),
+      h("span", { class: "sub" },
+        statLink(((vi.storyboard || 0) + (vi.draft || 0)) + " por revisar", "video", "draft"),
+        statLink((vi.final || 0) + " finales", "video", "final"),
+        statLink((vi.discarded || 0) + " descartados", "video", "discarded"))),
+    h("div", { class: "tile" },
+      h("span", { class: "label" }, "Por revisar"),
+      h("span", { class: "value" }, String(review)),
+      h("span", { class: "sub" },
+        h("a", { href: hSearch(new URLSearchParams({ archivados: "solo" })) }, plural(e.counts.archived || 0, "archivado", "archivados")))));
+  const trashTab = $("nav").querySelector('[data-nav="papelera"]');
+  fill(trashTab, "Papelera", e.trashCount ? h("span", { class: "count", "aria-label": plural(e.trashCount, "elemento", "elementos") }, String(e.trashCount)) : null);
+  $("export-todo").replaceChildren(exportButton("Exportar todo el estudio", exportRequest("studio")));
+}
+
+$("cliente-sel").addEventListener("change", (ev) => {
+  const v = ev.target.value;
+  lsSet(v);
+  location.hash = v ? hClient(v) : "#/";
+});
+
+// Search box: debounced, bookmarkable (#/buscar?q=…), keeps the filters already on the search route.
+let searchTimer = null;
+function goSearch(q) {
+  clearTimeout(searchTimer);
+  const r = state.route || parseHash();
+  const params = r.name === "buscar" ? new URLSearchParams(r.params) : new URLSearchParams();
+  const scope = lsGet();
+  if (r.name !== "buscar" && scope) params.set("cliente", scope);
+  if (!q.trim()) {
+    if (r.name === "buscar") location.hash = scope ? hClient(scope) : "#/";
+    return;
+  }
+  params.set("q", q.trim());
+  if (r.name === "buscar") { replaceHash(hSearch(params)); route(true); } else location.hash = hSearch(params);
+}
+$("buscar").addEventListener("input", (ev) => {
+  clearTimeout(searchTimer);
+  const v = ev.target.value;
+  searchTimer = setTimeout(() => goSearch(v), 300);
+});
+$("buscador").addEventListener("submit", (ev) => { ev.preventDefault(); goSearch($("buscar").value); });
+function syncSearchBox(r) {
+  const box = $("buscar");
+  if (r.name === "buscar" && document.activeElement === box) return; // do not rewrite what is being typed
+  box.value = r.name === "buscar" ? r.params.get("q") || "" : "";
 }
 
 // ---------- export requests ----------
 // The page cannot run scripts, so "Exportar" only copies a request the user pastes into Claude.
 // The request names the element and its studio path so the agent resolves it unambiguously.
-
-let statusTimer = null;
 
 function exportRequest(kind, name, path) {
   // Guillemets inside the name would make the quoted title ambiguous.
@@ -252,10 +695,9 @@ function exportRequest(kind, name, path) {
   if (kind === "product") return "Exportá el producto «" + label + "» con sus videos (" + path + ")";
   return "Exportá el actor " + label + " (" + path + ")";
 }
-
 // The aria-label names the element, so repeated buttons in a list are told apart by screen readers.
 function exportButton(text, request, ariaLabel) {
-  return h("button", { class: "chip export", type: "button", "aria-label": ariaLabel, onclick: () => copyRequest(request) }, text);
+  return h("button", { class: "chip export", type: "button", "aria-label": ariaLabel || text, onclick: () => copyRequest(request) }, text);
 }
 
 async function writeClipboard(text) {
@@ -263,8 +705,7 @@ async function writeClipboard(text) {
     try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* fall through */ }
   }
   // Fallback for browsers or contexts without the async clipboard API.
-  const box = h("textarea", { readonly: true, "aria-hidden": "true", tabindex: "-1",
-    style: "position:fixed;left:-9999px;top:0;opacity:0" });
+  const box = h("textarea", { readonly: true, "aria-hidden": "true", tabindex: "-1", style: "position:fixed;left:-9999px;top:0;opacity:0" });
   box.value = text;
   const previous = document.activeElement;
   document.body.append(box);
@@ -277,7 +718,7 @@ async function writeClipboard(text) {
 }
 
 function showStatus(text) {
-  const el = document.getElementById("estado");
+  const el = $("estado");
   el.textContent = text;
   clearTimeout(statusTimer);
   statusTimer = setTimeout(() => { el.textContent = ""; }, 5000);
@@ -286,8 +727,8 @@ function showStatus(text) {
 // Last resort: show the request selected so the user can copy it by hand.
 function showManualCopy(text, label, intro) {
   clearTimeout(statusTimer);
-  document.getElementById("estado").textContent = "";
-  const panel = document.getElementById("manual");
+  $("estado").textContent = "";
+  const panel = $("manual");
   const previous = document.activeElement;
   const field = h("textarea", { readonly: true, "aria-label": label || "Pedido para Claude" });
   field.value = text;
@@ -313,536 +754,973 @@ async function copyRequest(text) {
   if (await writeClipboard(text)) showStatus("Copiado. Pegalo en el chat de Claude para exportar.");
   else showManualCopy(text);
 }
-
-// Copies a piece of ad copy; falls back to the manual panel like the export requests.
 async function copyText(text, what) {
   if (await writeClipboard(text)) showStatus("Copiado: " + what + ".");
   else showManualCopy(text, what, "No pude copiarlo solo. Seleccioná el texto y copialo a mano.");
 }
 
-// ---------- model ----------
+// ---------- selection and actions ----------
 
-// Slots of a creative: carousels take the cards found in the files, statics the ones in creativo.json.
-function creativeSlots(data, files) {
-  const listed = (Array.isArray(data.slots) ? data.slots : []).filter((s) => typeof s === "string" && /^[a-z0-9-]+$/i.test(s));
-  const found = new Set();
-  if (data.type === "carousel") {
-    listed.filter((s) => /^tarjeta-\d+$/.test(s)).forEach((s) => found.add(s));
-    for (const f of files) { const r = /^(tarjeta-\d+)-v\d+\.png$/.exec(f); if (r) found.add(r[1]); }
-    return [...found].sort((a, b) => Number(a.slice(8)) - Number(b.slice(8)));
-  }
-  if (listed.length) return listed;
-  for (const f of files) { const r = /^(\d+x\d+)-v\d+\.png$/.exec(f); if (r) found.add(r[1]); }
-  const rank = (s) => (SLOT_ORDER.includes(s) ? SLOT_ORDER.indexOf(s) : SLOT_ORDER.length);
-  return [...found].sort((a, b) => rank(a) - rank(b));
+function clearSelection() {
+  state.selection.clear();
+  renderBar();
 }
 
-function slotLabel(slot) {
-  const card = /^tarjeta-(\d+)$/.exec(slot);
-  if (card) return "Tarjeta " + card[1];
-  return slot.replace("x", ":");
+function toggleSel(it, on, card) {
+  if (on) state.selection.set(it.key || it.path, { ruta: it.key || it.path, kind: it.kind, title: it.title, status: it.status, archived: !!it.archived });
+  else state.selection.delete(it.key || it.path);
+  if (card) card.classList.toggle("selected", on);
+  renderBar();
+  if (state.signal) state.signal();
 }
 
-// Turns the raw index into actors, products and videos with their file names resolved.
-function buildModel(raw) {
-  const m = { generatedAt: raw.generatedAt, studio: {}, actors: [], products: [], videos: [], creatives: [], brands: [], broken: [] };
-  try { m.studio = JSON.parse(raw.studio); } catch (e) { m.broken.push({ path: "studio.json", error: e.message }); }
+function barButton(name, text, cls, na) {
+  return h("button", { class: "btn " + (cls || ""), type: "button", "data-act": "1", "data-na": na ? "1" : null,
+    disabled: state.conn !== "ok" || state.busy || na, onclick: () => ejecutar(name, [...state.selection.values()]) }, text);
+}
 
-  for (const ent of raw.entities || []) {
-    let data;
-    try { data = JSON.parse(ent.json); } catch (e) {
-      m.broken.push({ path: ent.path, kind: ent.kind, error: e.message });
-      continue;
+function renderBar() {
+  const bar = $("barra");
+  const n = state.selection.size;
+  bar.hidden = n === 0;
+  document.body.classList.toggle("has-bar", n > 0);
+  if (!n) { bar.replaceChildren(); return; }
+  const sel = [...state.selection.values()];
+  const kinds = (k) => sel.some((s) => k.includes(s.kind));
+  const buttons = state.barMode === "papelera"
+    ? [barButton("restaurar", "Restaurar", "primary")]
+    : [
+      barButton("aprobar", "Aprobar", "primary", !kinds(["creative"])),
+      barButton("descartar", "Descartar", "", !kinds(["creative", "video"])),
+      barButton("reabrir", "Reabrir", "", !sel.some((s) => ACCION.reabrir.solo.includes(s.kind) && ACCION.reabrir.cuando(s))),
+      barButton("limpiarVersiones", "Limpiar versiones", "", !kinds(["creative", "video"])),
+      barButton("archivar", "Archivar", "", !sel.some((s) => !s.archived)),
+      barButton("desarchivar", "Desarchivar", "", !sel.some((s) => s.archived)),
+      barButton("papelera", "Papelera", "danger"),
+    ];
+  bar.replaceChildren(h("div", { class: "selbar-in" },
+    h("span", { class: "count" }, plural(n, "seleccionado", "seleccionados")),
+    buttons,
+    h("button", { class: "btn spacer", type: "button", onclick: () => { clearSelection(); document.querySelectorAll(".item.selected, .row.selected").forEach((c) => {
+      c.classList.remove("selected");
+      const i = c.querySelector("input[type=checkbox]"); if (i) i.checked = false;
+    }); if (state.signal) state.signal(); if (state.pendingRefresh) poll(); } }, "Limpiar selección")));
+}
+
+// Spanish text for the errors the server sends (English keys, see the API contract).
+function errEs(msg) {
+  const m = String(msg || "");
+  if (/original path already exists/.test(m)) return "Ya hay algo en la ubicación original: mové o renombrá eso y probá de nuevo.";
+  if (/trash entry not found|trashed item is missing/.test(m)) return "Ya no está en la papelera.";
+  if (/^not found$/.test(m)) return "No se encontró: puede que ya lo hayan movido.";
+  if (/status does not apply/.test(m)) return "El estado no aplica a este tipo de elemento.";
+  if (/valor must be/.test(m)) return "Estado inválido para este tipo de elemento.";
+  if (/cannot be moved alone/.test(m)) return "El archivo principal no se puede mover solo: mové la carpeta entera.";
+  if (/path not allowed/.test(m)) return "Esa ruta no está permitida.";
+  if (/only creatives and videos have versions/.test(m)) return "Solo los creativos y los videos tienen versiones para limpiar.";
+  if (/^moved \d+ of \d+ files/.test(m)) {
+    const r = /^moved (\d+) of (\d+) files; failed: (.*)$/.exec(m);
+    return r ? "Se movieron " + r[1] + " de " + r[2] + " archivos. No se pudo mover: " + r[3].replace(/\(not found\)/g, "(ya no está)") : "No se pudieron mover todos los archivos.";
+  }
+  if (/^sin conexión$|^acceso vencido$/.test(m)) return m === "sin conexión" ? "La galería se desconectó." : "Esta pestaña perdió el acceso.";
+  return "No se pudo (" + m + ").";
+}
+
+function confirmar({ titulo, texto, items, ok }) {
+  return new Promise((resolve) => {
+    const panel = $("dialogo");
+    const previous = document.activeElement;
+    const done = (v) => {
+      panel.hidden = true;
+      panel.replaceChildren();
+      document.removeEventListener("keydown", onKey);
+      if (previous && previous.isConnected && previous.focus) previous.focus();
+      resolve(v);
+    };
+    const cancel = h("button", { class: "btn", type: "button", onclick: () => done(false) }, "Cancelar");
+    const yes = h("button", { class: "btn danger solid", type: "button", onclick: () => done(true) }, ok);
+    const onKey = (e) => {
+      if (e.key === "Escape") done(false);
+      else if (e.key === "Tab") {
+        const els = [cancel, yes];
+        const i = els.indexOf(document.activeElement);
+        e.preventDefault();
+        els[(i + (e.shiftKey ? els.length - 1 : 1)) % els.length].focus();
+      }
+    };
+    const shown = items.slice(0, 5);
+    panel.replaceChildren(h("div", { class: "manual-box" },
+      h("h2", { id: "dialogo-titulo" }, titulo),
+      h("p", { class: "muted" }, texto),
+      h("ul", {}, shown.map((t) => h("li", {}, t)), items.length > shown.length ? h("li", { class: "muted" }, "y " + (items.length - shown.length) + " más") : null),
+      h("div", { class: "actions" }, cancel, yes)));
+    panel.hidden = false;
+    panel.addEventListener("click", (e) => { if (e.target === panel) done(false); }, { once: true });
+    document.addEventListener("keydown", onKey);
+    cancel.focus();
+  });
+}
+
+function showResult(def, rows) {
+  const panel = $("resultado");
+  const ok = rows.filter((r) => r.ok);
+  const bad = rows.filter((r) => !r.ok);
+  const total = rows.length;
+  const moved = rows.reduce((n, r) => n + (r.movidos || 0), 0);
+  const files = def.tipo === "limpiarVersiones" ? " " + plural(moved, "archivo", "archivos") + " a la papelera." : "";
+  const head = !bad.length
+    ? "Listo: " + plural(ok.length, "elemento", "elementos") + " " + (ok.length === 1 ? def.one : def.past) + "." + files
+    : ok.length
+      ? ok.length + " de " + total + " " + def.past + ". Fallaron " + bad.length + "."
+      : "No se pudo: fallaron los " + total + (total === 1 ? " (1 elemento)." : " elementos.");
+  panel.className = "result" + (bad.length ? " fail" : "");
+  panel.setAttribute("role", bad.length ? "alert" : "status");
+  fill(panel,
+    h("div", { class: "result-head" },
+      h("strong", {}, head),
+      h("button", { class: "btn", type: "button", onclick: () => { panel.hidden = true; } }, "Cerrar")),
+    bad.length ? h("ul", {}, bad.map((r) => h("li", { class: "bad" }, h("strong", {}, r.title + ": "), errEs(r.error)))) : null,
+    ok.length && bad.length ? h("details", {}, h("summary", {}, "Ver los " + ok.length + " que salieron bien"), h("ul", {}, ok.map((r) => h("li", {}, r.title)))) : null,
+    ok.length && !bad.length && ok.length > 1 ? h("details", {}, h("summary", {}, "Ver el detalle"), h("ul", {}, ok.map((r) => h("li", {}, r.title)))) : null);
+  panel.hidden = false;
+  if (!bad.length) { clearTimeout(showResult.t); showResult.t = setTimeout(() => { if (!panel.classList.contains("fail")) panel.hidden = true; }, 7000); }
+}
+
+// Dry run of "limpiar versiones": asks the server, per item, which files it would move. An item whose
+// dry run failed (503 while indexing, 404, 5xx) is kept apart in `errores`: that is not "0 files".
+async function previewLimpieza(entries) {
+  const plan = [];
+  const errores = [];
+  await pool(entries.map((e) => async () => {
+    try { plan.push({ entry: e, total: (await api("/api/versiones-antiguas?" + qs({ ruta: e.ruta }))).total }); } catch (err) {
+      if (err.status === 0 || err.status === 401) throw err;
+      errores.push({ entry: e, error: err.message, status: err.status });
     }
-    const files = new Set(ent.files || []);
-    const file = (name) => (files.has(name) ? ent.path + "/" + name : null);
-    if (ent.kind === "actor") {
-      m.actors.push({ ...data, id: data.id || ent.path.split("/").pop(), path: ent.path, file });
-    } else if (ent.kind === "product") {
-      const [, profileId, productId] = ent.path.split("/");
-      const photos = [...files].filter((f) => f.startsWith("fotos/")).sort();
-      const cover = (data.cover && files.has(data.cover) && data.cover) || photos[0] || null;
-      m.products.push({ ...data, profileId: data.profileId || profileId, productId: data.productId || productId,
-        path: ent.path, cover: cover ? ent.path + "/" + cover : null });
-    } else if (ent.kind === "brand") {
-      const logo = typeof data.logo === "string" && files.has(data.logo) ? ent.path + "/" + data.logo : null;
-      m.brands.push({ ...data, profileId: ent.path.split("/")[1], path: ent.path, logoFile: logo });
-    } else if (ent.kind === "creative") {
-      const parts = ent.path.split("/");
-      const pieces = creativeSlots(data, files).map((slot) => {
-        const re = new RegExp("^" + slot + "-v(\\d+)\\.png$");
-        const versions = [...files].map((f) => re.exec(f)).filter(Boolean)
-          .map((r) => ({ n: Number(r[1]), src: ent.path + "/" + r[0] })).sort((a, b) => b.n - a.n);
-        return { slot, label: slotLabel(slot), current: versions[0] || null, older: versions.slice(1) };
+  }), 6);
+  const orden = new Map(entries.map((e, i) => [e.ruta, i]));
+  plan.sort((a, b) => orden.get(a.entry.ruta) - orden.get(b.entry.ruta));
+  errores.sort((a, b) => orden.get(a.entry.ruta) - orden.get(b.entry.ruta));
+  return { plan, errores };
+}
+
+// "A, B y 2 más" for the items a dry run could not check.
+function nombresFallidos(errores) {
+  const names = errores.map((x) => x.entry.title || x.entry.ruta);
+  return names.slice(0, 3).join(", ") + (names.length > 3 ? " y " + (names.length - 3) + " más" : "");
+}
+
+// Runs one action over entries [{ruta, kind, title, status}] through POST /api/acciones and reports every item.
+async function ejecutar(nombre, entries, opts) {
+  const def = ACCION[nombre];
+  if (state.conn !== "ok" || state.busy || !entries.length) return null;
+  if (nombre === "limpiarVersiones") {
+    const candidates = entries.filter((e) => def.solo.includes(e.kind));
+    let plan = [];
+    let errores = [];
+    state.busy = true;
+    applyConn();
+    try { ({ plan, errores } = await previewLimpieza(candidates)); } catch (err) {
+      showStatus(errEs(err.message));
+      return null;
+    } finally { state.busy = false; applyConn(); }
+    const withFiles = plan.filter((p) => p.total > 0);
+    const total = withFiles.reduce((n, p) => n + p.total, 0);
+    const noRevisados = errores.length
+      ? "No se pudo revisar " + (errores.length === 1 ? "1 elemento" : errores.length + " elementos") + " (" + nombresFallidos(errores) + "): no se limpia" + (errores.length === 1 ? "" : "n") + ". Probá de nuevo en un momento."
+      : "";
+    if (!total && errores.length) { showStatus(noRevisados); return null; }
+    if (!total && candidates.length) { showStatus("No hay versiones viejas para limpiar."); return null; }
+    if (total) {
+      const yes = await confirmar({
+        titulo: "¿Mover " + plural(total, "archivo", "archivos") + " de versiones viejas a la papelera?",
+        texto: "Se quedan la versión actual, el video final y los prompts. Lo que se mueve no se borra: se restaura desde la Papelera." + (noRevisados ? " " + noRevisados : ""),
+        items: withFiles.map((p) => (p.entry.title || p.entry.ruta) + " (" + plural(p.total, "archivo", "archivos") + ")"),
+        ok: "Mover " + plural(total, "archivo", "archivos"),
       });
-      const topN = Math.max(0, ...pieces.map((p) => (p.current ? p.current.n : 0)));
-      m.creatives.push({
-        ...data,
-        id: data.id || parts[parts.length - 1],
-        path: ent.path,
-        productPath: parts.slice(0, 3).join("/"),
-        profileId: parts[1],
-        productId: parts[2],
-        type: data.type === "carousel" ? "carousel" : "static",
-        pieces,
-        versionCount: (Array.isArray(data.versions) && data.versions.length) || topN,
-        cover: (pieces[0] && pieces[0].current && pieces[0].current.src) || null,
-      });
-    } else if (ent.kind === "video") {
-      const parts = ent.path.split("/");
-      const scenes = [...files]
-        .map((f) => /^escena-(\d+)\.(png|jpe?g|webp)$/i.exec(f))
-        .filter(Boolean)
-        .sort((a, b) => Number(a[1]) - Number(b[1]))
-        .map((r) => ({ n: Number(r[1]), src: ent.path + "/" + r[0] }));
-      const versions = (Array.isArray(data.versions) ? data.versions : []).map((v, i) => {
-        const n = v.n || i + 1;
-        return { ...v, n, video: file("borrador-v" + n + ".mp4"), thumb: file("thumb-v" + n + ".jpg") };
-      });
-      m.videos.push({
-        ...data,
-        id: data.id || parts[parts.length - 1],
-        path: ent.path,
-        productPath: parts.slice(0, 3).join("/"),
-        profileId: parts[1],
-        productId: parts[2],
-        scenes,
-        versions,
-        current: versions[versions.length - 1] || null,
-        finalVideo: file("final.mp4"),
-      });
+      if (!yes) return null;
     }
+    const keep = new Set(withFiles.map((p) => p.entry.ruta));
+    entries = entries.filter((e) => !def.solo.includes(e.kind) || keep.has(e.ruta));
+    if (!entries.length) return null;
+  }
+  if (nombre === "papelera") {
+    const yes = await confirmar({
+      titulo: "¿Mandar " + plural(entries.length, "elemento", "elementos") + " a la papelera?",
+      texto: "Salen de la galería, pero no se borran: los podés restaurar desde la Papelera.",
+      items: entries.map((e) => e.title || e.ruta), ok: "Mandar a la papelera",
+    });
+    if (!yes) return null;
+  }
+  state.busy = true;
+  applyConn();
+  const rows = [];
+  const send = entries.filter((e) => (!def.solo || def.solo.includes(e.kind)) && (!def.cuando || def.cuando(e)));
+  for (const e of entries) if (!send.includes(e)) rows.push({ ruta: e.ruta, title: e.title || e.ruta, ok: false, error: def.skip });
+  try {
+    for (let i = 0; i < send.length; i += 200) {
+      const chunk = send.slice(i, i + 200);
+      try {
+        const r = await api("/api/acciones", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ acciones: chunk.map((e) => ({ tipo: def.tipo, ruta: e.ruta, ...(def.valor ? { valor: def.valor } : {}) })) }),
+        });
+        chunk.forEach((e, j) => {
+          const x = (r.resultados && (r.resultados[j] && r.resultados[j].ruta === e.ruta ? r.resultados[j] : r.resultados.find((y) => y.ruta === e.ruta))) || { ok: false, error: "sin respuesta" };
+          rows.push({ ruta: e.ruta, title: e.title || e.ruta, ok: !!x.ok, error: x.error, movidos: x.movidos });
+        });
+      } catch (err) {
+        for (const e of chunk) rows.push({ ruta: e.ruta, title: e.title || e.ruta, ok: false, error: err.message });
+      }
+    }
+  } finally {
+    state.busy = false;
+  }
+  for (const r of rows) if (r.ok) state.selection.delete(r.ruta);
+  renderBar();
+  applyConn();
+  showResult(def, rows);
+  state.productos.clear();
+  try { await loadEstudio(); } catch (e) { /* banner */ }
+  if (opts && opts.alTerminar) await opts.alTerminar(rows);
+  else await refreshView(true);
+  return rows;
+}
+
+// Actions of a single element (detail views and product header).
+function detailActions(e, alTerminar) {
+  const row = h("div", { class: "actions", role: "group", "aria-label": "Acciones" });
+  const entry = [{ ruta: e.path, kind: e.kind, title: e.title, status: e.status }];
+  const add = (name, text, cls) => row.append(h("button", { class: "btn " + (cls || ""), type: "button", "data-act": "1",
+    disabled: state.conn !== "ok", onclick: () => ejecutar(name, entry, { alTerminar: (rows) => alTerminar(name, rows) }) }, text));
+  if (e.kind === "creative") {
+    if (e.status !== "approved") add("aprobar", "Aprobar", "primary");
+    if (e.status === "discarded") add("reabrir", "Reabrir");
+    else if (e.status !== "draft") add("revisar", "Volver a por revisar");
+    if (e.status !== "discarded") add("descartar", "Descartar");
+  } else if (e.kind === "video") add(e.status === "discarded" ? "reabrir" : "descartar", e.status === "discarded" ? "Reabrir" : "Descartar");
+  if (e.kind === "creative" || e.kind === "video") add("limpiarVersiones", "Limpiar versiones viejas");
+  add(e.archived ? "desarchivar" : "archivar", e.archived ? "Desarchivar" : "Archivar");
+  add("papelera", "Papelera", "danger");
+  return row;
+}
+
+// ---------- cards ----------
+
+function pill(status, extra) {
+  return h("span", { class: "pill st-" + (ESTADO[status] ? status : extra || "broken") }, ESTADO[status] || status || "Sin estado");
+}
+
+function picture(path, w, alt) {
+  const im = h("img", { src: thumb(path, w), alt: alt || "", loading: "lazy", decoding: "async" });
+  im.addEventListener("error", () => {
+    if (!im.dataset.fallback) { im.dataset.fallback = "1"; im.src = url(path); } else im.replaceWith(h("div", { class: "placeholder" }, "No se pudo cargar la imagen"));
+  });
+  return im;
+}
+
+// "Carrusel · 5 tarjetas" / "Estática · 2 piezas" from the type and piece count the server sends.
+function typeLabel(it) {
+  const n = it.pieces || 0;
+  if (it.type === "carousel") return n ? "Carrusel · " + plural(n, "tarjeta", "tarjetas") : "Carrusel";
+  return n ? "Estática · " + plural(n, "pieza", "piezas") : "Estática";
+}
+
+function itemCard(it, opts) {
+  const o = opts || {};
+  const selectable = o.selectable !== false && it.kind !== "brand" && it.kind !== "product";
+  const on = state.selection.has(it.path);
+  const meta = [
+    o.showClient !== false && it.profileId ? it.clientName || clientName(it.profileId) : null,
+    it.kind !== "product" && it.productId && o.showProduct !== false ? it.productTitle || it.productId : null,
+    it.actorId && it.kind !== "actor" ? actorName(it.actorId) : null,
+    fmtDate(it.updatedAt),
+  ].filter(Boolean).join(" · ");
+  const card = h("article", { class: "card item " + it.kind + (it.archived ? " archived" : "") + (on ? " selected" : "") },
+    selectable ? h("label", { class: "pick", title: "Seleccionar" },
+      h("input", { type: "checkbox", checked: on, "aria-label": "Seleccionar " + it.title, onchange: (e) => toggleSel(it, e.target.checked, card) })) : null,
+    h("a", { class: "cardlink", href: hrefFor(it) },
+      h("div", { class: "media" },
+        it.cover ? picture(it.cover, 480, "") : h("div", { class: "placeholder" }, "Sin imagen todavía"),
+        o.showKind ? h("span", { class: "badge" }, KIND_LABEL[it.kind] || it.kind) : null),
+      h("div", { class: "card-body" },
+        h("div", { class: "pills" },
+          it.broken ? h("span", { class: "pill st-broken" }, "Dañado") : (ESTADO[it.status] ? pill(it.status) : null),
+          it.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null,
+          it.kind === "creative" && it.type ? h("span", { class: "tag type" }, typeLabel(it)) : null),
+        h("h3", {}, it.title || it.path.split("/").pop()),
+        meta ? h("p", { class: "meta" }, meta) : null)));
+  return card;
+}
+
+const grid = (items, opts) => h("div", { class: "grid" }, items.map((it) => itemCard(it, opts)));
+
+// ---------- paginated lists ----------
+
+// A list that loads pages of GET /api/elementos ("Cargar más"), keeps the selection and can refresh
+// the pages already loaded. `query()` returns the query string without the page; every filter,
+// batches included, is applied by the server.
+function makeList(o) {
+  const my = gen;
+  const c = { items: [], total: 0, pages: 0, busy: false, el: h("div", { class: "section" }) };
+  const head = h("div", { class: "list-head" });
+  const body = h("div");
+  const foot = h("div", { class: "list-foot" });
+  c.el.append(head, body, foot);
+  const visible = () => c.items;
+  const selectable = o.selectable !== false;
+
+  function paint() {
+    if (my !== gen) return;
+    const vis = visible();
+    const total = c.total;
+    const picks = vis.filter((i) => i.kind !== "brand" && i.kind !== "product");
+    const all = picks.length > 0 && picks.every((i) => state.selection.has(i.path));
+    const some = picks.some((i) => state.selection.has(i.path));
+    const box = h("input", { type: "checkbox", checked: all, "aria-label": "Seleccionar todo lo que está en pantalla",
+      onchange: (e) => {
+        for (const i of picks) toggleSel(i, e.target.checked);
+        body.replaceChildren(o.render(vis));
+      } });
+    box.indeterminate = !all && some;
+    state.signal = () => {
+      box.checked = picks.length > 0 && picks.every((i) => state.selection.has(i.path));
+      box.indeterminate = !box.checked && picks.some((i) => state.selection.has(i.path));
+    };
+    head.replaceChildren(
+      selectable && picks.length ? h("label", { class: "checkline" }, box, "Seleccionar todo lo cargado (" + picks.length + ")") : h("span"),
+      h("span", { class: "muted num" }, plural(total, "resultado", "resultados")));
+    body.replaceChildren(vis.length ? o.render(vis) : (c.busy ? h("p", { class: "skeleton" }, "Cargando…") : o.empty));
+    const more = c.items.length < c.total;
+    fill(foot,
+      more ? h("button", { class: "btn", type: "button", onclick: () => c.more() }, "Cargar más") : null,
+      vis.length ? h("p", { class: "foot num" }, !more ? "Mostrando todos (" + vis.length + ")" : "Mostrando " + c.items.length + " de " + c.total) : null);
+    if (o.onTotal) o.onTotal(total);
   }
 
-  const byPath = new Map(m.products.map((p) => [p.path, p]));
-  const actors = new Map(m.actors.map((a) => [a.id, a]));
-  for (const v of m.videos) {
-    v.product = byPath.get(v.productPath) || null;
-    v.actor = actors.get(v.actorId) || null;
-    v.cover = (v.current && v.current.thumb) || (v.scenes[0] && v.scenes[0].src) || null;
+  async function fetchPage(n) {
+    return api("/api/elementos?" + o.query() + "&pagina=" + n + "&porPagina=" + PER_PAGE);
   }
-  const brands = new Map(m.brands.map((b) => [b.profileId, b]));
-  for (const c of m.creatives) {
-    c.product = byPath.get(c.productPath) || null;
-    c.actor = c.actorId ? actors.get(c.actorId) || null : null;
-    c.brand = brands.get(c.profileId) || null;
-  }
-  m.creatives.sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
-  m.videos.sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
-  m.actors.sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id), "es"));
-  m.products.sort((a, b) => String(a.title || a.path).localeCompare(String(b.title || b.path), "es"));
-  return m;
+  c.more = async () => {
+    if (c.busy) return;
+    c.busy = true;
+    const btn = foot.querySelector("button");
+    if (btn) { btn.disabled = true; btn.textContent = "Cargando…"; }
+    try {
+      const r = await fetchPage(c.pages + 1);
+      if (my !== gen) return;
+      c.items.push(...r.items);
+      c.total = r.total;
+      c.pages++;
+    } catch (e) {
+      if (my !== gen) return;
+      c.busy = false;
+      foot.replaceChildren(h("p", { class: "notice" }, "No se pudo cargar: " + errEs(e.message)),
+        h("button", { class: "btn", type: "button", onclick: () => c.more() }, "Reintentar"));
+      return;
+    }
+    c.busy = false;
+    paint();
+  };
+  c.reload = async () => {
+    c.items = []; c.pages = 0; c.total = 0;
+    c.busy = false;
+    body.replaceChildren(h("p", { class: "skeleton" }, "Cargando…"));
+    await c.more();
+  };
+  // Reloads the pages already shown, so an action does not send the user back to page 1.
+  c.refresh = async () => {
+    const n = Math.max(1, c.pages);
+    const items = [];
+    let total = 0;
+    for (let p = 1; p <= n; p++) {
+      const r = await fetchPage(p);
+      if (my !== gen) return;
+      items.push(...r.items);
+      total = r.total;
+      if (!r.items.length) break;
+    }
+    c.items = items; c.total = total; c.pages = n;
+    paint();
+  };
+  c.paint = paint;
+  return c;
+}
+
+// ---------- filters ----------
+
+function estadoOptions(tipo) {
+  const list = tipo === "creativo" ? ESTADOS_DE.creative : tipo === "video" ? ESTADOS_DE.video : ["draft", "approved", "final", "storyboard", "discarded"];
+  return [["", "Todos"], ...list.map((s) => [s, ESTADO[s]])];
+}
+
+// Builds the filter bar over the live URLSearchParams `params`; any change calls onChange().
+function filterBar(params, fields, onChange, tipoFijo) {
+  const bar = h("form", { class: "filters", role: "group", "aria-label": "Filtros", onsubmit: (e) => e.preventDefault() });
+  const set = (key, value, rebuild) => {
+    if (value) params.set(key, value); else params.delete(key);
+    if (key === "tipo" && params.get("estado") && !estadoOptions(value).some(([v]) => v === params.get("estado"))) params.delete("estado");
+    onChange();
+    if (rebuild) {
+      const next = filterBar(params, fields, onChange, tipoFijo);
+      bar.replaceWith(next);
+      const f = next.querySelector("#f-" + key);
+      if (f) f.focus();
+    }
+  };
+  const select = (key, label, options, rebuild) => h("label", { class: "field", for: "f-" + key },
+    h("span", { class: "label" }, label),
+    h("select", { id: "f-" + key, onchange: (e) => set(key, e.target.value, rebuild) },
+      options.map(([v, t]) => h("option", { value: v, selected: (params.get(key) || "") === v }, t))));
+  const date = (key, label) => h("label", { class: "field", for: "f-" + key },
+    h("span", { class: "label" }, label),
+    h("input", { id: "f-" + key, type: "date", value: params.get(key) || "", onchange: (e) => set(key, e.target.value) }));
+  if (fields.includes("cliente")) bar.append(select("cliente", "Cliente", [["", "Todos"], ...state.estudio.clients.map((c) => [c.profileId, c.name])]));
+  if (fields.includes("tipo")) bar.append(select("tipo", "Tipo", [["", "Todos"], ["creativo", "Creativos"], ["video", "Videos"], ["actor", "Actores"], ["producto", "Productos"]], true));
+  if (fields.includes("estado")) bar.append(select("estado", "Estado", estadoOptions(params.get("tipo") || tipoFijo)));
+  if (fields.includes("actor")) bar.append(select("actor", "Actor", [["", "Todos"], ...(state.actores || []).map((a) => [a.actorId, a.title])]));
+  if (fields.includes("fechas")) bar.append(date("desde", "Desde"), date("hasta", "Hasta"));
+  if (fields.includes("archivados")) bar.append(select("archivados", "Archivados", [["", "Ocultar"], ["1", "Incluir"], ["solo", "Solo archivados"]]));
+  if (fields.includes("orden")) bar.append(select("orden", "Orden", [["", "Más reciente"], ["antiguo", "Más antiguo"], ["titulo", "Por título"]]));
+  return bar;
+}
+
+// Applies the filters of the URL to the API query.
+function listQuery(base, params, extra) {
+  const o = { ...base };
+  for (const k of ["estado", "actor", "desde", "hasta", "archivados", "orden", ...(extra || [])]) if (params.get(k)) o[k] = params.get(k);
+  return qs(o);
 }
 
 // ---------- views ----------
 
-function header(m) {
-  const spent = m.videos.reduce((s, v) => s + (Number(v.credits) || 0), 0)
-    + m.actors.reduce((s, a) => s + (Number(a.credits) || 0), 0)
-    + m.creatives.reduce((s, c) => s + (Number(c.credits) || 0), 0);
-  const review = m.videos.filter((v) => v.status === "storyboard" || v.status === "draft").length
-    + m.creatives.filter((c) => c.status === "draft").length;
-  const credits = m.studio.credits || {};
-  return h("header", { class: "top" },
-    h("div", { class: "top-head" },
-      h("h1", {}, "UGC Studio"),
-      h("div", { class: "top-actions" },
-        h("p", { class: "muted" }, "Actualizado " + fmtDate(m.generatedAt)),
-        exportButton("Exportar todo el estudio", exportRequest("studio")))),
-    h("div", { class: "meter" },
-      h("div", { class: "tile primary" },
-        h("span", { class: "label" }, "Créditos disponibles"),
-        h("span", { class: "value" }, fmtCredits(credits.available)),
-        h("span", { class: "sub" }, credits.checkedAt ? "Al " + fmtDate(credits.checkedAt) : "Pedile a Claude que los revise")),
-      h("div", { class: "tile" },
-        h("span", { class: "label" }, "Créditos usados"),
-        h("span", { class: "value" }, fmtCredits(spent)),
-        h("span", { class: "sub" }, "En actores, videos y creativos")),
-      h("div", { class: "tile" },
-        h("span", { class: "label" }, "Videos"),
-        h("span", { class: "value" }, String(m.videos.length)),
-        h("span", { class: "sub" }, plural(m.videos.filter((v) => v.status === "final").length, "final", "finales"))),
-      h("div", { class: "tile" },
-        h("span", { class: "label" }, "Creativos"),
-        h("span", { class: "value" }, String(m.creatives.length)),
-        h("span", { class: "sub" }, plural(m.creatives.filter((c) => c.status === "approved").length, "aprobado", "aprobados"))),
-      h("div", { class: "tile" },
-        h("span", { class: "label" }, "Por revisar"),
-        h("span", { class: "value" }, String(review)),
-        h("span", { class: "sub" }, "Storyboards, borradores y creativos"))));
-}
+const emptyBox = (titleText, text) => h("div", { class: "empty" }, h("h2", {}, titleText), text ? h("p", { class: "muted" }, text) : null);
 
-function tabs(m, active) {
-  const tab = (id, text, n) => h("a", { href: "#" + id, "aria-current": active === id ? "page" : null },
-    text, h("span", { class: "count" }, String(n)));
-  return h("nav", { class: "tabs", "aria-label": "Secciones" },
-    tab("videos", "Videos", m.videos.length),
-    tab("creativos", "Creativos", m.creatives.length),
-    tab("actores", "Actores", m.actors.length),
-    tab("productos", "Productos", m.products.length));
-}
-
-function pill(status, labels = STATUS) {
-  return h("span", { class: "pill st-" + (labels[status] ? status : "broken") }, labels[status] || status || "Sin estado");
-}
-
-function brokenNotice(m) {
-  if (!m.broken.length) return null;
-  return h("div", { class: "notice", role: "status" },
-    "Hay archivos dañados que no se pueden mostrar. Pedile a Claude que los arregle: ",
-    m.broken.map((b) => b.path).join(", "));
-}
-
-function videoCard(v) {
-  const cur = v.current;
-  const sub = [
-    v.actor ? v.actor.name : v.actorId,
-    cur ? "versión " + cur.n + (cur.resolution ? " · " + cur.resolution : "") : (v.scenes.length ? plural(v.scenes.length, "escena", "escenas") : ""),
-    fmtCredits(v.credits) + " cr",
-  ].filter(Boolean).join(" · ");
-  return h("a", { class: "card", href: "#video/" + encodeURIComponent(v.path) },
-    h("div", { class: "media" },
-      v.cover ? h("img", { src: url(v.cover), alt: "", loading: "lazy" }) : h("div", { class: "placeholder" }, "Sin imagen todavía"),
-      v.finalVideo ? h("span", { class: "badge" }, "1080p listo") : null),
-    h("div", { class: "card-body" },
-      pill(v.status),
-      h("h3", {}, v.title || v.id),
-      h("p", { class: "meta" }, sub)));
-}
-
-function videosView(m) {
-  const filters = [
-    ["all", "Todos"],
-    ["review", "Por revisar"],
-    ["final", "Finales"],
-    ["discarded", "Descartados"],
-  ];
-  const keep = (v) => videoFilter === "all"
-    || (videoFilter === "review" && (v.status === "storyboard" || v.status === "draft"))
-    || v.status === videoFilter;
-  const list = m.videos.filter(keep);
-
-  const groups = new Map();
-  for (const v of list) {
-    if (!groups.has(v.productPath)) groups.set(v.productPath, []);
-    groups.get(v.productPath).push(v);
+async function viewHome(r, my) {
+  title("Inicio");
+  const e = state.estudio;
+  const wrap = h("section", { class: "section" });
+  const clientsGrid = h("div", { class: "grid" });
+  const latest = h("div", { class: "section" });
+  const heading = h("h1", {}, "Clientes");
+  mount(wrap);
+  if (!e.clients.length && !(e.counts.byKind && (e.counts.byKind.creative || e.counts.byKind.video || e.counts.byKind.actor))) {
+    wrap.append(emptyBox("Todavía no hay nada acá", "Pedile a Claude, por ejemplo: “Quiero creativos para Meta Ads de este producto” o “Quiero crear un actor”. Lo vas a ver aparecer."));
+    return;
   }
-
-  const toolbar = h("div", { class: "toolbar", role: "group", "aria-label": "Filtrar videos" },
-    filters.map(([id, text]) => h("button", {
-      class: "chip", type: "button", "aria-pressed": String(videoFilter === id),
-      onclick: () => { videoFilter = id; render(); },
-    }, text)));
-
-  if (!m.videos.length) {
-    return h("section", { class: "section" }, h("div", { class: "empty" },
-      h("h2", {}, "Todavía no hay videos"),
-      h("p", { class: "muted" }, "Pedile a Claude, por ejemplo: “Quiero un video para este producto”. Lo vas a ver aparecer acá.")));
+  wrap.append(heading, e.clients.length ? clientsGrid : emptyBox("Todavía no hay clientes", "Aparecen cuando Claude prepara un producto."), latest);
+  const covers = [];
+  for (const c of e.clients) {
+    const media = h("div", { class: "media" }, h("span", { class: "initial", "aria-hidden": "true" }, (c.name || c.profileId).slice(0, 1).toUpperCase()));
+    clientsGrid.append(h("article", { class: "card item client" },
+      h("a", { class: "cardlink", href: hClient(c.profileId) }, media,
+        h("div", { class: "card-body" },
+          h("h3", {}, c.name),
+          h("p", { class: "meta num" }, [plural(c.products, "producto", "productos"), plural(c.creatives, "creativo", "creativos"), plural(c.videos, "video", "videos")].join(" · "))))));
+    covers.push(async () => {
+      const x = await api("/api/elementos?" + qs({ tipo: "producto", cliente: c.profileId, orden: "titulo", porPagina: 1 }));
+      if (my !== gen || !x.items[0] || !x.items[0].cover) return;
+      media.replaceChildren(picture(x.items[0].cover, 480, ""));
+    });
   }
-
-  return h("section", { class: "section" }, toolbar,
-    list.length ? [...groups].map(([path, vids]) => {
-      const p = vids[0].product;
-      return h("div", { class: "group" },
-        h("div", { class: "group-head" },
-          h("h2", {}, p ? p.title : vids[0].productId),
-          h("span", { class: "meta" }, [p && p.clientName ? p.clientName : vids[0].profileId, plural(vids.length, "video", "videos")].join(" · "))),
-        h("div", { class: "grid" }, vids.map(videoCard)));
-    }) : h("p", { class: "muted" }, "No hay videos con este filtro."));
+  const sections = [["creativo", "Últimos creativos"], ["video", "Últimos videos"]];
+  const results = await Promise.all(sections.map(([tipo]) => api("/api/elementos?" + qs({ tipo, porPagina: 5 }))));
+  if (my !== gen) return;
+  sections.forEach(([tipo, label], i) => {
+    if (!results[i].items.length) return;
+    latest.append(h("div", { class: "group" },
+      h("div", { class: "group-head" }, h("h2", {}, label),
+        h("a", { href: hSearch(new URLSearchParams({ tipo })) }, "Ver todos (" + results[i].total + ")")),
+      grid(results[i].items)));
+  });
+  state.view = { refresh: () => route(true) };
+  pool(covers, 4);
 }
 
-function videoDetail(m, path) {
-  const v = m.videos.find((x) => x.path === path);
-  if (!v) return h("div", { class: "empty" }, h("h2", {}, "Este video ya no está"), h("a", { href: "#videos" }, "Volver a los videos"));
+async function viewCliente(r, my) {
+  const c = state.estudio.clients.find((x) => x.profileId === r.cliente);
+  if (!c) { title("Cliente"); mount(crumbs([{ text: "Inicio", href: "#/" }, { text: r.cliente }]), emptyBox("Este cliente no existe", "Elegí otro en el selector de arriba.")); return; }
+  title(c.name);
+  const params = new URLSearchParams(r.params);
+  const base = "/" + enc(c.profileId);
+  const head = h("div", { class: "page-head" },
+    h("h1", {}, c.name),
+    h("div", { class: "lead" },
+      h("span", { class: "muted num" }, [plural(c.products, "producto", "productos"), plural(c.creatives, "creativo", "creativos"), plural(c.videos, "video", "videos")].join(" · ")),
+      h("a", { href: hSearch(new URLSearchParams({ cliente: c.profileId })) }, "Buscar solo en " + c.name)));
+  const list = makeList({
+    query: () => listQuery({ tipo: "producto", cliente: c.profileId }, params),
+    selectable: false,
+    empty: emptyBox("Este cliente todavía no tiene productos", "Aparecen cuando Claude prepara un producto."),
+    render: (items) => h("div", { class: "grid" }, items.map(productCard)),
+  });
+  const bar = filterBar(params, ["archivados", "orden"], () => { replaceHash(base + (params.toString() ? "?" + params : "")); list.reload(); });
+  mount(crumbs([{ text: "Inicio", href: "#/" }, { text: c.name }]), head, bar, list.el);
+  state.view = { refresh: async () => { await loadEstudio(); await list.refresh(); } };
+  await list.more();
+  if (my !== gen) return;
+  fillCounts(list.items, my);
+}
 
-  const sources = [];
-  if (v.finalVideo) sources.push({ label: "Final 1080p", src: v.finalVideo, poster: v.current && v.current.thumb });
-  for (const ver of [...v.versions].reverse()) {
-    if (ver.video) sources.push({ label: "Versión " + ver.n, src: ver.video, poster: ver.thumb });
+// Product card with creative and video counts filled in after the cards are on screen.
+function productCard(p) {
+  const counts = h("p", { class: "meta num", "data-prod": p.path }, "…");
+  return h("article", { class: "card item product" + (p.archived ? " archived" : "") },
+    h("a", { class: "cardlink", href: hrefFor(p) },
+      h("div", { class: "media" }, p.cover ? picture(p.cover, 480, "") : h("div", { class: "placeholder" }, "Sin foto")),
+      h("div", { class: "card-body" },
+        p.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null,
+        h("h3", {}, p.title || p.productId), counts)));
+}
+function fillCounts(items, my) {
+  const tasks = items.filter((p) => p.kind === "product").map((p) => async () => {
+    const [cr, vi] = await Promise.all(["creativo", "video"].map((tipo) => api("/api/elementos?" + qs({ tipo, cliente: p.profileId, producto: p.productId, porPagina: 1 }))));
+    if (my !== gen) return;
+    const el = document.querySelector('[data-prod="' + CSS.escape(p.path) + '"]');
+    if (el) el.textContent = plural(cr.total, "creativo", "creativos") + " · " + plural(vi.total, "video", "videos");
+  });
+  return pool(tasks, 6);
+}
+
+async function getProducto(c, p) {
+  const key = c + "/" + p;
+  if (!state.productos.has(key)) {
+    try { state.productos.set(key, await api("/api/elemento?" + qs({ ruta: "clientes/" + c + "/" + p }))); } catch (e) {
+      if (e.status === 0 || e.status === 401) throw e;
+      return null;
+    }
   }
+  return state.productos.get(key);
+}
 
-  const stage = h("div", { class: "media" });
-  const buttons = h("div", { class: "versions", role: "group", "aria-label": "Versiones" });
-  const show = (i) => {
-    const s = sources[i];
-    stage.replaceChildren(h("video", { src: url(s.src), poster: s.poster ? url(s.poster) : null, controls: true, playsinline: true, preload: "metadata" }));
-    [...buttons.children].forEach((b, j) => b.setAttribute("aria-pressed", String(i === j)));
+async function viewProducto(r, my) {
+  const c = r.cliente;
+  const prod = await getProducto(c, r.producto);
+  if (my !== gen) return;
+  const cname = clientName(c);
+  const base = "/" + [c, r.producto].map(enc).join("/");
+  if (!prod) {
+    title("Producto");
+    mount(crumbs([{ text: "Inicio", href: "#/" }, { text: cname, href: hClient(c) }, { text: r.producto }]), emptyBox("Este producto ya no está", "Puede que lo hayan movido a la papelera."));
+    return;
+  }
+  const j = prod.json && typeof prod.json === "object" ? prod.json : {};
+  const ptitle = prod.title || r.producto;
+  title(ptitle);
+  const photos = prod.photos || [];
+  const arch = r.params.get("archivados") || "";
+  const count = async (tipo) => (await api("/api/elementos?" + qs({ tipo, cliente: c, producto: r.producto, archivados: arch, porPagina: 1 }))).total;
+  const [nCr, nVi] = await Promise.all([count("creativo"), count("video")]);
+  if (my !== gen) return;
+  const tab = r.tab || (nCr ? "creativos" : nVi ? "videos" : photos.length ? "fotos" : "creativos");
+  const tabs = h("nav", { class: "tabs", "aria-label": "Contenido del producto" },
+    [["creativos", "Creativos", nCr], ["videos", "Videos", nVi], ["fotos", "Fotos", photos.length]].map(([id, text, n]) =>
+      h("a", { href: hProduct(c, r.producto, id), "aria-current": tab === id ? "page" : null }, text, h("span", { class: "count" }, String(n)))));
+
+  const params = new URLSearchParams(r.params);
+  const lote = r.params.get("lote"); // stays in the hash and goes to the server as ?lote=
+  const crumbItems = [{ text: "Inicio", href: "#/" }, { text: cname, href: hClient(c) }, { text: ptitle, href: hProduct(c, r.producto) }];
+  if (tab === "creativos") crumbItems.push({ text: "Creativos", href: hProduct(c, r.producto, "creativos") });
+  else crumbItems.push({ text: tab === "videos" ? "Videos" : "Fotos" });
+  if (tab === "creativos" && lote) crumbItems.push({ text: "Lote " + (fmtBatchDay(lote) || lote) });
+
+  const head = h("div", { class: "page-head" },
+    h("div", { class: "pills" }, prod.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null),
+    h("h1", {}, ptitle),
+    h("div", { class: "lead" },
+      h("span", { class: "muted" }, [PLATFORM[j.platform] || j.platform, fmtPrice(j), r.producto].filter(Boolean).join(" · ")),
+      safeUrl(j.url) ? h("a", { href: safeUrl(j.url), target: "_blank", rel: "noopener" }, "Ver la publicación") : null,
+      exportButton("Exportar producto", exportRequest("product", ptitle, prod.path), "Exportar producto " + ptitle)),
+    detailActions(prod, async (name, rows) => {
+      if (name === "papelera" && rows.every((x) => x.ok)) location.hash = hClient(c); else route(true);
+    }));
+
+  const view = { refresh: null };
+  state.view = view;
+  if (tab === "fotos") {
+    mount(crumbs(crumbItems), head, tabs, photos.length
+      ? h("div", { class: "photos" }, photos.map((p, i) => h("a", { href: url(p), target: "_blank", rel: "noopener", "aria-label": "Abrir la foto " + (i + 1) + " en tamaño real" }, picture(p, 480, "Foto " + (i + 1) + " de " + ptitle))))
+      : emptyBox("Este producto no tiene fotos", "Las fotos se guardan en la carpeta fotos/ del producto."));
+    view.refresh = async () => { state.productos.clear(); await route(true); };
+    return;
+  }
+  const tipo = tab === "videos" ? "video" : "creativo"; // API aliases; the state filter uses the same words
+  const path = base + "/" + tab;
+  const commit = () => { replaceHash("#" + path + (params.toString() ? "?" + params : "")); list.reload(); };
+  const list = makeList({
+    query: () => listQuery({ tipo, cliente: c, producto: r.producto }, params, tab === "creativos" ? ["lote"] : []),
+    empty: emptyBox(tab === "videos" ? "No hay videos con estos filtros" : "No hay creativos con estos filtros",
+      tab === "videos" ? "Pedile a Claude: “Quiero un video para este producto”." : "Pedile a Claude: “Quiero creativos para Meta Ads de este producto”."),
+    render: tab === "videos" ? (items) => grid(items, { showClient: false, showProduct: false }) : (items) => creativeGroups(items, c, r.producto),
+  });
+  const bar = filterBar(params, ["estado", "actor", "fechas", "archivados", "orden"], commit, tipo);
+  const loteNote = lote ? h("p", { class: "meta" }, "Mostrando solo el lote «" + lote + "». ", h("a", { href: hProduct(c, r.producto, "creativos") }, "Ver todos los lotes")) : null;
+  mount(crumbs(crumbItems), head, tabs, bar, loteNote, list.el);
+  view.refresh = async () => { state.productos.clear(); await loadEstudio(); await list.refresh(); };
+  await list.more();
+}
+
+// Creatives of a product grouped by batch (newest batch first).
+function creativeGroups(items, c, p) {
+  const batches = new Map();
+  for (const it of items) {
+    const key = it.batch || "";
+    if (!batches.has(key)) batches.set(key, []);
+    batches.get(key).push(it);
+  }
+  const ordered = [...batches].sort((a, b) => String(b[0]).localeCompare(String(a[0])));
+  return h("div", { class: "group" }, ordered.map(([batch, cs]) =>
+    h("div", { class: "subgroup" },
+      h("div", { class: "subhead" },
+        h("h2", {}, batch ? "Lote del " + (fmtBatchDay(batch) || batch) : "Sin lote"),
+        h("span", { class: "meta" }, plural(cs.length, "creativo", "creativos")),
+        batch ? h("a", { href: hProduct(c, p, "creativos", new URLSearchParams({ lote: batch })) }, "Ver solo este lote") : null),
+      grid(cs, { showClient: false, showProduct: false }))));
+}
+
+async function viewBuscar(r, my) {
+  const params = new URLSearchParams(r.params);
+  title("Buscar");
+  const heading = h("h1", {}, "Buscar");
+  const sub = h("p", { class: "muted" });
+  const label = () => {
+    const q = params.get("q");
+    heading.textContent = q ? "Resultados para «" + q + "»" : "Todo el contenido";
+    title(q ? "Buscar: " + q : "Buscar");
   };
-  sources.forEach((s, i) => buttons.append(h("button", { class: "chip", type: "button", onclick: () => show(i) }, s.label)));
-  if (sources.length) show(0);
-  else stage.append(v.cover ? h("img", { src: url(v.cover), alt: "" }) : h("div", { class: "placeholder" }, "Todavía no hay video"));
-
-  const fact = (label, value, wide) => value ? h("div", { class: wide ? "fact wide" : "fact" }, h("span", { class: "label" }, label), h("span", {}, value)) : null;
-  const cur = v.current;
-
-  return h("section", { class: "section" },
-    h("a", { class: "back", href: "#videos" }, "← Volver a los videos"),
-    h("div", { class: "detail" },
-      h("div", { class: "player" }, stage, sources.length > 1 ? buttons : null),
-      h("div", { class: "info" },
-        pill(v.status),
-        h("h2", {}, v.title || v.id),
-        h("div", { class: "links" }, exportButton("Exportar este video", exportRequest("video", v.title || v.id, v.path), "Exportar este video: " + (v.title || v.id))),
-        h("div", { class: "facts" },
-          fact("Producto", v.product ? v.product.title : v.productId, true),
-          fact("Actor", v.actor ? v.actor.name : v.actorId),
-          fact("Duración", v.durationSec ? v.durationSec + " s" : null),
-          fact("Créditos", fmtCredits(v.credits)),
-          fact("Versiones", v.versions.length ? String(v.versions.length) : null),
-          fact("Actualizado", fmtDate(v.updatedAt || v.createdAt))),
-        v.hook ? h("div", { class: "group" }, h("span", { class: "label" }, "Gancho"), h("p", {}, v.hook)) : null,
-        v.script ? h("div", { class: "group" }, h("span", { class: "label" }, "Guion"), h("p", { class: "script" }, v.script)) : null,
-        v.scenes.length ? h("div", { class: "group" },
-          h("span", { class: "label" }, "Storyboard"),
-          h("div", { class: "scenes" }, v.scenes.map((s) =>
-            h("a", { href: url(s.src), target: "_blank" }, h("img", { src: url(s.src), alt: "Escena " + s.n, loading: "lazy" }), "Escena " + s.n)))) : null,
-        v.versions.length ? h("div", { class: "group" },
-          h("span", { class: "label" }, "Historial"),
-          h("div", { class: "rows" }, [...v.versions].reverse().map((ver) =>
-            h("div", { class: "row" },
-              h("button", { class: "thumb-btn", type: "button", disabled: !ver.video, "aria-label": "Ver versión " + ver.n,
-                onclick: () => { show(sources.findIndex((s) => s.src === ver.video)); window.scrollTo(0, 0); } },
-                ver.thumb ? h("img", { src: url(ver.thumb), alt: "" }) : h("span", { class: "thumb" })),
-              h("div", {},
-                h("p", { class: "title" }, "Versión " + ver.n + (ver === cur ? " (actual)" : "")),
-                h("p", { class: "meta" }, [ver.note, ver.resolution, fmtCredits(ver.credits) + " cr", fmtDate(ver.createdAt)].filter(Boolean).join(" · "))),
-              h("div", { class: "end links" }, safeUrl(ver.url) ? h("a", { href: safeUrl(ver.url), target: "_blank", rel: "noopener" }, "Higgsfield") : null))))) : null,
-        safeUrl(v.finalUrl) ? h("p", { class: "links" }, h("a", { href: safeUrl(v.finalUrl), target: "_blank", rel: "noopener" }, "Ver el final en Higgsfield")) : null)));
+  label();
+  const commit = () => { replaceHash(hSearch(params)); label(); $("buscar").value = params.get("q") || ""; list.reload(); };
+  const list = makeList({
+    query: () => listQuery({}, params, ["q", "tipo", "cliente"]),
+    empty: emptyBox("No encontré nada", "Probá con otra palabra o sacá algún filtro. La búsqueda ignora mayúsculas y acentos."),
+    render: (items) => grid(items, { showKind: true }),
+  });
+  const bar = filterBar(params, ["cliente", "tipo", "estado", "actor", "fechas", "archivados", "orden"], commit);
+  mount(crumbs([{ text: "Inicio", href: "#/" }, { text: "Buscar" }]), h("div", { class: "page-head" }, heading, sub), bar, list.el);
+  state.view = { refresh: async () => { await loadEstudio(); await list.refresh(); } };
+  await list.more();
 }
 
-function creativeCard(c) {
-  const sub = [
-    c.concept && c.concept.angle,
-    c.actor ? c.actor.name : (c.actorId || "Solo producto"),
-    fmtCredits(c.credits) + " cr",
-  ].filter(Boolean).join(" · ");
-  return h("a", { class: "card creative" + (c.type === "carousel" ? " carousel" : ""), href: "#creativo/" + encodeURIComponent(c.path) },
-    h("div", { class: "media" },
-      c.cover ? h("img", { src: url(c.cover), alt: "", loading: "lazy" }) : h("div", { class: "placeholder" }, "Sin imagen todavía"),
-      h("span", { class: "badge" }, c.type === "carousel" ? "Carrusel · " + c.pieces.length : "Estática")),
-    h("div", { class: "card-body" },
-      pill(c.status, CREATIVE_STATUS),
-      h("h3", {}, c.title || c.id),
-      h("p", { class: "meta" }, sub)));
+async function viewActores(r, my) {
+  title("Actores");
+  const params = new URLSearchParams(r.params);
+  const list = makeList({
+    query: () => listQuery({ tipo: "actor" }, params),
+    empty: emptyBox("Todavía no hay actores", "Pedile a Claude: “Quiero crear un actor”."),
+    render: (items) => h("div", { class: "grid" }, items.map((a) => {
+      const card = itemCard(a, { showClient: false });
+      card.append(h("div", { class: "links", style: "padding:0 14px 14px" }, exportButton("Exportar actor", exportRequest("actor", a.title, a.path), "Exportar actor " + a.title)));
+      return card;
+    })),
+  });
+  const commit = () => { replaceHash("#/actores" + (params.toString() ? "?" + params : "")); list.reload(); };
+  const bar = filterBar(params, ["archivados", "orden"], commit);
+  mount(crumbs([{ text: "Inicio", href: "#/" }, { text: "Actores" }]), h("div", { class: "page-head" }, h("h1", {}, "Actores")), bar, list.el);
+  state.view = { refresh: async () => { await loadEstudio(); await list.refresh(); } };
+  await list.more();
 }
 
-function creativesView(m) {
-  if (!m.creatives.length) {
-    return h("section", { class: "section" }, h("div", { class: "empty" },
-      h("h2", {}, "Todavía no hay creativos"),
-      h("p", { class: "muted" }, "Pedile a Claude, por ejemplo: “Quiero creativos para Meta Ads de este producto”. Los vas a ver acá.")));
+async function viewPapelera(r, my) {
+  title("Papelera");
+  state.barMode = "papelera";
+  const shown = { n: PER_PAGE };
+  let entries = [];
+  const box = h("div", { class: "section" });
+  const VIEJO_DIAS = 30;
+  const corteViejo = () => new Date(Date.now() - VIEJO_DIAS * 86400000).toISOString();
+  const masViejos = (list, antesDe) => list.filter((e) => Date.parse(e.trashedAt) < Date.parse(antesDe));
+  async function load() {
+    entries = (await api("/api/papelera")).entries || [];
+    if (my !== gen) return;
+    paint();
   }
-  const filters = [["all", "Todos"], ["draft", "Por revisar"], ["approved", "Aprobados"], ["discarded", "Descartados"]];
-  const list = m.creatives.filter((c) => creativeFilter === "all" || c.status === creativeFilter);
-  const groups = new Map();
-  for (const c of list) {
-    if (!groups.has(c.productPath)) groups.set(c.productPath, []);
-    groups.get(c.productPath).push(c);
+  function paint() {
+    const vis = entries.slice(0, shown.n);
+    const all = vis.length > 0 && vis.every((e) => state.selection.has(e.id));
+    const check = h("input", { type: "checkbox", checked: all, "aria-label": "Seleccionar todo lo que está en pantalla",
+      onchange: (ev) => { for (const e of vis) toggleSel(rowItem(e), ev.target.checked); paint(); } });
+    state.signal = () => { check.checked = vis.length > 0 && vis.every((e) => state.selection.has(e.id)); check.indeterminate = !check.checked && vis.some((e) => state.selection.has(e.id)); };
+    const nViejos = masViejos(entries, corteViejo()).length;
+    const tool = (text, count, onclick) => h("button", { class: "btn danger", type: "button", "data-act": "1", "data-na": count ? null : "1",
+      disabled: state.conn !== "ok" || state.busy || !count, onclick }, text);
+    fill(box,
+      entries.length ? h("div", { class: "trash-tools", role: "group", "aria-label": "Vaciar la papelera" },
+        tool("Vaciar papelera", entries.length, () => vaciar(false)),
+        tool("Vaciar lo de más de " + VIEJO_DIAS + " días", nViejos, () => vaciar(true)),
+        h("span", { class: "muted num" }, plural(nViejos, "elemento", "elementos") + " con más de " + VIEJO_DIAS + " días")) : null,
+      h("div", { class: "list-head" },
+        vis.length ? h("label", { class: "checkline" }, check, "Seleccionar todo lo cargado (" + vis.length + ")") : h("span"),
+        h("span", { class: "muted num" }, plural(entries.length, "elemento", "elementos") + " en la papelera")),
+      vis.length ? h("div", { class: "rows" }, vis.map(trashRow)) : emptyBox("La papelera está vacía", "Lo que mandes a la papelera aparece acá y se puede restaurar."),
+      entries.length > vis.length ? h("div", { class: "list-foot" },
+        h("button", { class: "btn", type: "button", onclick: () => { shown.n += PER_PAGE; paint(); } }, "Cargar más"),
+        h("p", { class: "foot num" }, "Mostrando " + vis.length + " de " + entries.length)) : null);
   }
-  const toolbar = h("div", { class: "toolbar", role: "group", "aria-label": "Filtrar creativos" },
-    filters.map(([id, text]) => h("button", {
-      class: "chip", type: "button", "aria-pressed": String(creativeFilter === id),
-      onclick: () => { creativeFilter = id; render(); },
-    }, text)));
+  const rowItem = (e) => ({ key: e.id, kind: "trash", title: nameOf(e), status: null, archived: false });
+  const nameOf = (e) => (e.originalPath || e.id).split("/").filter(Boolean).pop();
 
-  return h("section", { class: "section" }, toolbar,
-    list.length ? [...groups].map(([path, items]) => {
-      const p = items[0].product;
-      const batches = new Map();
-      for (const c of items) {
-        const key = c.batch ? String(c.batch) : "";
-        if (!batches.has(key)) batches.set(key, []);
-        batches.get(key).push(c);
-      }
-      const ordered = [...batches].sort((a, b) => String(b[0]).localeCompare(String(a[0])));
-      return h("div", { class: "group" },
-        h("div", { class: "group-head" },
-          h("h2", {}, p ? p.title : items[0].productId),
-          h("span", { class: "meta" }, [p && p.clientName ? p.clientName : items[0].profileId, plural(items.length, "creativo", "creativos")].join(" · "))),
-        ordered.map(([batch, cs]) => {
-          cs.sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")) || String(a.id).localeCompare(String(b.id)));
-          return h("div", { class: "subgroup" },
-            h("div", { class: "subhead" },
-              h("h3", {}, batch ? "Lote del " + (fmtBatchDay(batch) || batch) : "Sin lote"),
-              h("span", { class: "meta" }, plural(cs.length, "creativo", "creativos"))),
-            h("div", { class: "grid" }, cs.map(creativeCard)));
-        }));
-    }) : h("p", { class: "muted" }, "No hay creativos con este filtro."));
+  // Empties the trash for good (everything, or what is older than 30 days) through
+  // POST /api/papelera/vaciar, after a confirmation that names how many items go. It sends the ids of
+  // the entries listed in that confirmation, so what was trashed meanwhile is not deleted.
+  async function vaciar(soloViejos) {
+    if (state.conn !== "ok" || state.busy) return;
+    let fresh;
+    try { fresh = (await api("/api/papelera")).entries || []; } catch (err) { showStatus(errEs(err.message)); return; }
+    const antesDe = soloViejos ? corteViejo() : null;
+    const target = antesDe ? masViejos(fresh, antesDe) : fresh;
+    if (!target.length) {
+      showStatus(soloViejos ? "No hay nada con más de " + VIEJO_DIAS + " días en la papelera." : "La papelera ya está vacía.");
+      entries = fresh;
+      if (my === gen) paint();
+      return;
+    }
+    const n = target.length;
+    const yes = await confirmar({
+      titulo: soloViejos ? "¿Vaciar lo de más de " + VIEJO_DIAS + " días?" : "¿Vaciar la papelera?",
+      texto: "Se van a eliminar para siempre " + plural(n, "elemento", "elementos") + (soloViejos ? " que llevan más de " + VIEJO_DIAS + " días en la papelera" : "") + ". Esto no se puede deshacer.",
+      items: target.map(nameOf), ok: "Eliminar " + plural(n, "elemento", "elementos"),
+    });
+    if (!yes) return;
+    state.busy = true;
+    applyConn();
+    try {
+      const r = await api("/api/papelera/vaciar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: target.map((e) => e.id) }) });
+      const aparte = (r.noEncontrados || []).length + (r.invalidos || []).length;
+      showStatus("Se eliminaron " + plural(r.eliminados, "elemento", "elementos") + " de la papelera."
+        + (aparte ? " " + plural(aparte, "ya no estaba", "ya no estaban") + "." : "")
+        + ((r.fallidos || []).length ? " No se pudo eliminar " + plural(r.fallidos.length, "elemento", "elementos") + ": probá de nuevo." : ""));
+    } catch (err) { showStatus(errEs(err.message)); } finally { state.busy = false; applyConn(); }
+    try { await loadEstudio(); } catch (e) { /* banner */ }
+    try { await load(); } catch (e) { return; }
+    for (const id of [...state.selection.keys()]) if (!entries.some((e) => e.id === id)) state.selection.delete(id);
+    renderBar();
+  }
+  function trashRow(e) {
+    const on = state.selection.has(e.id);
+    const row = h("div", { class: "row" + (on ? " selected" : "") },
+      h("label", { class: "pickcell", title: "Seleccionar" },
+        h("input", { type: "checkbox", checked: on, "aria-label": "Seleccionar " + nameOf(e), onchange: (ev) => toggleSel(rowItem(e), ev.target.checked, row) })),
+      h("div", {},
+        h("p", { class: "title" }, nameOf(e)),
+        h("p", { class: "meta" }, [e.kind === "folder" ? "Carpeta" : e.kind === "file" ? "Archivo" : null, e.originalPath, "Eliminado " + fmtDate(e.trashedAt)].filter(Boolean).join(" · "))),
+      h("div", { class: "end" }, h("button", { class: "btn", type: "button", "data-act": "1", disabled: state.conn !== "ok",
+        "aria-label": "Restaurar " + nameOf(e), onclick: () => ejecutar("restaurar", [{ ruta: e.id, kind: "trash", title: nameOf(e) }]) }, "Restaurar")));
+    return row;
+  }
+  mount(crumbs([{ text: "Inicio", href: "#/" }, { text: "Papelera" }]),
+    h("div", { class: "page-head" }, h("h1", {}, "Papelera"), h("p", { class: "muted" }, "Lo que mandás a la papelera no se borra: podés restaurarlo desde acá.")), box);
+  state.view = { refresh: load };
+  await load();
 }
 
-const SWATCH_ROLES = [["primary", "Principal"], ["accent", "Acento"], ["text", "Texto"], ["background", "Fondo"]];
+// ---------- detail views ----------
+
+async function viewElemento(r, my) {
+  let e;
+  try { e = await api("/api/elemento?" + qs({ ruta: r.ruta })); } catch (err) {
+    if (err.status === 404 || err.status === 400) {
+      title("No está");
+      mount(crumbs([{ text: "Inicio", href: "#/" }, { text: "Elemento" }]), emptyBox("Este elemento ya no está", "Puede que lo hayan movido a la papelera o borrado."),
+        h("div", { class: "actions" }, h("button", { class: "btn", type: "button", onclick: () => history.back() }, "Volver"), h("a", { class: "btn", href: "#/papelera" }, "Mirar la papelera")));
+      return;
+    }
+    throw err;
+  }
+  if (my !== gen) return;
+  if (e.kind === "product") { location.replace(hProduct(e.profileId, e.productId)); return; }
+  if (e.kind === "brand") { location.replace(hClient(e.profileId)); return; }
+  const parts = e.path.split("/");
+  const crumbList = [{ text: "Inicio", href: "#/" }];
+  let back = "#/";
+  if (e.kind === "actor") { crumbList.push({ text: "Actores", href: "#/actores" }); back = "#/actores"; } else {
+    const tab = e.kind === "video" ? "videos" : "creativos";
+    crumbList.push({ text: e.clientName || clientName(e.profileId), href: hClient(e.profileId) },
+      { text: e.productTitle || e.productId, href: hProduct(e.profileId, e.productId) },
+      { text: e.kind === "video" ? "Videos" : "Creativos", href: hProduct(e.profileId, e.productId, tab) });
+    back = hProduct(e.profileId, e.productId, tab);
+    if (e.kind === "creative" && e.batch) crumbList.push({ text: "Lote " + (fmtBatchDay(e.batch) || e.batch), href: hProduct(e.profileId, e.productId, "creativos", new URLSearchParams({ lote: e.batch })) });
+  }
+  crumbList.push({ text: e.title || parts[parts.length - 1] });
+  title(e.title);
+  const after = (name, rows) => {
+    if (name === "papelera" && rows.every((x) => x.ok)) location.hash = back; else route(true);
+  };
+  const common = [crumbs(crumbList), h("a", { href: back }, "← Volver")];
+  if (e.error) common.push(h("div", { class: "notice", role: "status" }, "Este archivo está dañado y no se puede mostrar completo. Pedile a Claude que lo arregle: " + e.error));
+  if (e.kind === "creative") mount(common, await creativeDetail(e, after, my));
+  else if (e.kind === "video") mount(common, videoDetail(e, after));
+  else mount(common, await actorDetail(e, after));
+  state.view = { refresh: () => route(true) };
+}
+
+const fact = (label, value, wide) => (value ? h("div", { class: wide ? "fact wide" : "fact" }, h("span", { class: "label" }, label), h("span", {}, value)) : null);
 
 function brandBlock(b) {
-  const colors = b.colors || {};
+  const j = b.json && typeof b.json === "object" ? b.json : {};
+  const colors = j.colors || {};
   const swatches = SWATCH_ROLES
     .filter(([k]) => typeof colors[k] === "string" && /^#[0-9a-f]{3,8}$/i.test(colors[k]))
     .map(([k, label]) => h("div", { class: "swatch" },
       h("i", { style: "background:" + colors[k], role: "img", "aria-label": label + " " + colors[k] }),
       h("span", {}, label), h("span", { class: "num muted" }, colors[k])));
-  const fonts = b.fonts ? [b.fonts.heading, b.fonts.body].filter(Boolean).join(" / ") : "";
+  const fonts = j.fonts ? [j.fonts.heading, j.fonts.body].filter(Boolean).join(" / ") : "";
+  const logo = typeof j.logo === "string" && (b.files || []).includes(j.logo) ? b.path + "/" + j.logo : null;
   return h("div", { class: "group" },
-    h("span", { class: "label" }, "Marca" + (b.name ? " · " + b.name : "")),
-    b.logoFile ? h("div", { class: "logo-box" }, h("img", { src: url(b.logoFile), alt: "Logo de " + (b.name || "la marca") })) : null,
+    h("span", { class: "label" }, "Marca" + (j.name ? " · " + j.name : "")),
+    logo ? h("div", { class: "logo-box" }, h("img", { src: url(logo), alt: "Logo de " + (j.name || "la marca") })) : null,
     swatches.length ? h("div", { class: "swatches" }, swatches) : null,
     fonts ? h("p", { class: "meta" }, "Tipografías: " + fonts) : null,
-    b.tone ? h("p", { class: "meta" }, "Tono: " + b.tone) : null);
+    j.tone ? h("p", { class: "meta" }, "Tono: " + j.tone) : null);
 }
 
-function creativeDetail(m, path) {
-  const c = m.creatives.find((x) => x.path === path);
-  if (!c) return h("div", { class: "empty" }, h("h2", {}, "Este creativo ya no está"), h("a", { href: "#creativos" }, "Volver a los creativos"));
-
-  const title = c.title || c.id;
+async function creativeDetail(e, after, my) {
+  const j = e.json && typeof e.json === "object" ? e.json : {};
+  const name = e.title;
+  const isCarousel = j.type === "carousel";
+  let brand = null;
+  try { brand = await api("/api/elemento?" + qs({ ruta: "clientes/" + e.profileId + "/marca" })); } catch (err) { if (err.status === 0 || err.status === 401) throw err; }
   const piece = (p) => {
     const ratio = /^\d+x\d+$/.test(p.slot) ? " r" + p.slot : /^tarjeta-\d+$/.test(p.slot) ? " tarjeta" : "";
-    return h("figure", { class: "piece" + ratio, style: "margin:0" },
+    return h("figure", { class: "piece" + ratio },
       p.current
-        ? h("a", { class: "shot", href: url(p.current.src), target: "_blank", rel: "noopener", "aria-label": "Abrir " + p.label + " en tamaño real" },
-            h("img", { src: url(p.current.src), alt: title + " · " + p.label, loading: "lazy" }))
+        ? h("a", { class: "shot", href: url(p.current.src), target: "_blank", rel: "noopener", "aria-label": "Abrir " + p.label + " en tamaño real" }, picture(p.current.src, 960, name + " · " + p.label))
         : h("div", { class: "shot" }, h("div", { class: "placeholder" }, "Sin imagen todavía")),
       h("figcaption", { class: "meta" }, p.label + (p.current ? " · versión " + p.current.n : "")),
       p.older.length ? h("div", { class: "olds" }, "Anteriores",
-        p.older.map((o) => h("a", { href: url(o.src), target: "_blank", rel: "noopener", "aria-label": p.label + ", versión " + o.n },
-          h("img", { src: url(o.src), alt: "", loading: "lazy" }), "v" + o.n))) : null);
+        p.older.map((o) => h("a", { href: url(o.src), target: "_blank", rel: "noopener", "aria-label": p.label + ", versión " + o.n }, picture(o.src, 240, ""), "v" + o.n))) : null);
   };
-
-  const fact = (label, value, wide) => value ? h("div", { class: wide ? "fact wide" : "fact" }, h("span", { class: "label" }, label), h("span", {}, value)) : null;
-  const k = c.concept || {};
-  const mode = c.textMode === "template" ? "Plantilla" + (c.layout ? " · " + c.layout : "")
-    : c.textMode === "integrated" ? "Texto en la imagen" : null;
-  const cp = c.copy || {};
-  const copyRows = [
-    ["Texto principal", cp.primaryText], ["Titular", cp.headline], ["Descripción", cp.description],
-    ["Botón", cp.cta], ["Nombre del anuncio", c.adName],
-  ].filter(([, v]) => typeof v === "string" && v);
+  const k = j.concept || {};
+  const mode = j.textMode === "template" ? "Plantilla" + (j.layout ? " · " + j.layout : "") : j.textMode === "integrated" ? "Texto en la imagen" : null;
+  const cp = j.copy || {};
+  const copyRows = [["Texto principal", cp.primaryText], ["Titular", cp.headline], ["Descripción", cp.description], ["Botón", cp.cta], ["Nombre del anuncio", j.adName]]
+    .filter(([, v]) => typeof v === "string" && v);
   const copyRow = ([label, value]) => h("div", { class: "copyrow" },
     h("div", {}, h("span", { class: "label" }, label), h("p", {}, value)),
     h("button", { class: "chip", type: "button", "aria-label": "Copiar " + label.toLowerCase(), onclick: () => copyText(value, label.toLowerCase()) }, "Copiar"));
-
+  const pieces = e.pieces || [];
   return h("section", { class: "section" },
-    h("a", { class: "back", href: "#creativos" }, "← Volver a los creativos"),
     h("div", { class: "info" },
-      pill(c.status, CREATIVE_STATUS),
-      h("h2", {}, title),
-      h("p", { class: "meta" }, c.type === "carousel" ? "Carrusel · " + plural(c.pieces.length, "tarjeta", "tarjetas") : "Estática")),
-    c.pieces.length ? h("div", { class: "pieces" + (c.type === "static" ? " static" : "") }, c.pieces.map(piece))
+      h("div", { class: "pills" }, e.status ? pill(e.status) : null, e.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null),
+      h("h1", {}, name),
+      h("p", { class: "meta" }, isCarousel ? "Carrusel · " + plural(pieces.length, "tarjeta", "tarjetas") : "Estática"),
+      detailActions(e, after)),
+    pieces.length ? h("div", { class: "pieces" + (!isCarousel ? " static" : "") }, pieces.map(piece))
       : h("div", { class: "empty" }, h("p", { class: "muted" }, "Todavía no hay imágenes de este creativo.")),
     h("div", { class: copyRows.length ? "cols" : "info" },
-      copyRows.length ? h("div", { class: "info" },
-        h("div", { class: "group" }, h("span", { class: "label" }, "Texto del anuncio"), copyRows.map(copyRow))) : null,
+      copyRows.length ? h("div", { class: "info" }, h("div", { class: "group" }, h("span", { class: "label" }, "Texto del anuncio"), copyRows.map(copyRow))) : null,
       h("div", { class: "info" },
         h("div", { class: "facts" },
-          fact("Producto", c.product ? c.product.title : c.productId, true),
-          fact("Ángulo", k.angle),
-          fact("Conciencia", k.awareness),
-          fact("Visual", k.visual),
+          fact("Producto", e.productTitle || e.productId, true),
+          fact("Ángulo", k.angle), fact("Conciencia", k.awareness), fact("Visual", k.visual),
           fact("Por qué es distinto", k.why, true),
-          fact("Actor", c.actor ? c.actor.name : (c.actorId || "Solo producto")),
-          fact("Texto", mode),
-          fact("Créditos", fmtCredits(c.credits)),
-          fact("Versiones", c.versionCount ? String(c.versionCount) : null),
-          fact("Lote", c.batch),
-          fact("Actualizado", fmtDate(c.updatedAt || c.createdAt))),
-        c.brand ? brandBlock(c.brand) : null)));
+          fact("Actor", e.actorId ? actorName(e.actorId) : "Solo producto"),
+          fact("Texto", mode), fact("Créditos", fmtCredits(j.credits)),
+          fact("Versiones", e.versionCount ? String(e.versionCount) : null),
+          fact("Lote", e.batch), fact("Actualizado", fmtDate(e.updatedAt))),
+        brand ? brandBlock(brand) : null)));
 }
 
-function actorsView(m) {
-  if (!m.actors.length) {
-    return h("div", { class: "empty" }, h("h2", {}, "Todavía no hay actores"),
-      h("p", { class: "muted" }, "Pedile a Claude: “Quiero crear un actor”."));
-  }
-  const videosBy = (id) => m.videos.filter((v) => v.actorId === id).length;
-  return h("section", { class: "section" }, h("div", { class: "grid" }, m.actors.map((a) => {
-    const portrait = a.file("retrato.png");
-    return h("article", { class: "card actor" },
-      h("div", { class: "media" }, portrait ? h("img", { src: url(portrait), alt: "Retrato de " + (a.name || a.id), loading: "lazy" }) : h("div", { class: "placeholder" }, "Sin retrato")),
-      h("div", { class: "card-body" },
-        h("h3", {}, a.name || a.id),
-        h("p", { class: "meta" }, [a.gender, a.apparentAge ? a.apparentAge + " años" : null, a.version].filter(Boolean).join(" · ")),
-        a.style ? h("p", {}, a.style) : null,
-        a.personality ? h("p", { class: "meta" }, a.personality) : null,
-        h("div", { class: "tags" },
-          (a.fitsNiches || []).map((n) => h("span", { class: "tag" }, n)),
-          (a.avoidNiches || []).map((n) => h("span", { class: "tag no", title: "No encaja" }, n))),
-        h("p", { class: "meta" }, plural(videosBy(a.id), "video", "videos") + " · " + fmtCredits(a.credits) + " cr"),
-        h("div", { class: "links" },
-          a.file("angulos.png") ? h("a", { href: url(a.file("angulos.png")), target: "_blank" }, "Ángulos") : null,
-          a.file("character-sheet.png") ? h("a", { href: url(a.file("character-sheet.png")), target: "_blank" }, "Ficha de personaje") : null),
-        h("div", { class: "links" }, exportButton("Exportar actor", exportRequest("actor", a.name || a.id, a.path), "Exportar actor " + (a.name || a.id)))));
-  })));
-}
-
-function productsView(m) {
-  if (!m.products.length) {
-    return h("div", { class: "empty" }, h("h2", {}, "Todavía no hay productos"),
-      h("p", { class: "muted" }, "Aparecen cuando Claude prepara un video para un producto."));
-  }
-  return h("section", { class: "section" }, h("div", { class: "rows" }, m.products.map((p) => {
-    const n = m.videos.filter((v) => v.productPath === p.path).length;
-    const nc = m.creatives.filter((c) => c.productPath === p.path).length;
-    return h("div", { class: "row" },
-      p.cover ? h("img", { src: url(p.cover), alt: "", loading: "lazy" }) : h("span", { class: "thumb" }),
-      h("div", {},
-        h("p", { class: "title" }, p.title || p.productId),
-        h("p", { class: "meta" }, [p.clientName || p.profileId, PLATFORM[p.platform] || p.platform, fmtPrice(p), plural(n, "video", "videos"), plural(nc, "creativo", "creativos")].filter(Boolean).join(" · "))),
-      h("div", { class: "end links" },
-        n ? h("a", { href: "#videos", onclick: () => { videoFilter = "all"; } }, "Ver videos") : null,
-        nc ? h("a", { href: "#creativos", onclick: () => { creativeFilter = "all"; } }, "Ver creativos") : null,
-        safeUrl(p.url) ? h("a", { href: safeUrl(p.url), target: "_blank", rel: "noopener" }, "Publicación") : null,
-        exportButton("Exportar", exportRequest("product", p.title || p.productId, p.path), "Exportar producto " + (p.title || p.productId))));
-  })));
-}
-
-function render() {
-  const app = document.getElementById("app");
-  if (!model) return;
-  const hash = decodeURIComponent(location.hash.slice(1));
-  let body;
-  let active = "videos";
-  if (hash.startsWith("video/")) body = videoDetail(model, hash.slice(6));
-  else if (hash.startsWith("creativo/")) { active = "creativos"; body = creativeDetail(model, hash.slice(9)); }
-  else if (hash === "creativos") { active = "creativos"; body = creativesView(model); }
-  else if (hash === "actores") { active = "actores"; body = actorsView(model); }
-  else if (hash === "productos") { active = "productos"; body = productsView(model); }
-  else body = videosView(model);
-  app.replaceChildren(header(model), tabs(model, active), brokenNotice(model) || "", body,
-    h("p", { class: "foot" }, "Esta página se actualiza sola mientras Claude trabaja."));
-}
-
-// ---------- data loading ----------
-
-function playing() {
-  return [...document.querySelectorAll("video")].some((v) => !v.paused && !v.ended);
-}
-
-function apply() {
-  const raw = window.ESTUDIO;
-  const build = raw && (raw.build || raw.generatedAt);
-  if (!raw || build === lastBuild) return;
-  if (model && playing()) return; // wait until the video stops, then refresh
-  lastBuild = build;
-  model = buildModel(raw);
-  render();
-}
-
-function load(first) {
-  const s = document.createElement("script");
-  s.src = DATA_FILE + "?t=" + Date.now();
-  s.onload = () => { s.remove(); apply(); };
-  s.onerror = () => {
-    s.remove();
-    if (first) {
-      document.getElementById("app").replaceChildren(h("div", { class: "empty" },
-        h("h2", {}, "Falta el índice de la galería"),
-        h("p", { class: "muted" }, "Abrí Claude con esta carpeta y la galería se arma sola. Después recargá esta página.")));
-    }
+function videoDetail(e, after) {
+  const j = e.json && typeof e.json === "object" ? e.json : {};
+  const versions = e.versions || [];
+  const scenes = e.scenes || [];
+  const cur = e.current;
+  const sources = [];
+  if (e.finalVideo) sources.push({ label: "Final 1080p", src: e.finalVideo, poster: cur && cur.thumb });
+  for (const v of [...versions].reverse()) if (v.video) sources.push({ label: "Versión " + v.n, src: v.video, poster: v.thumb });
+  const stage = h("div", { class: "media" });
+  const buttons = h("div", { class: "versions", role: "group", "aria-label": "Versiones" });
+  const show = (i) => {
+    const s = sources[i];
+    stage.replaceChildren(h("video", { src: url(s.src), poster: s.poster ? thumb(s.poster, 960) : null, controls: true, playsinline: true, preload: "metadata" }));
+    [...buttons.children].forEach((b, n) => b.setAttribute("aria-pressed", String(i === n)));
   };
-  document.head.append(s);
+  sources.forEach((s, i) => buttons.append(h("button", { class: "chip", type: "button", onclick: () => show(i) }, s.label)));
+  if (sources.length) show(0);
+  else stage.append(e.cover ? picture(e.cover, 960, "") : h("div", { class: "placeholder" }, "Todavía no hay video"));
+  const vtitle = e.title;
+  return h("section", { class: "section" },
+    h("div", { class: "detail" },
+      h("div", { class: "player" }, stage, sources.length > 1 ? buttons : null),
+      h("div", { class: "info" },
+        h("div", { class: "pills" }, e.status ? pill(e.status) : null, e.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null),
+        h("h1", {}, vtitle),
+        detailActions(e, after),
+        h("div", { class: "links" }, exportButton("Exportar este video", exportRequest("video", vtitle, e.path), "Exportar este video: " + vtitle)),
+        h("div", { class: "facts" },
+          fact("Producto", e.productTitle || e.productId, true),
+          e.actorId ? h("div", { class: "fact" }, h("span", { class: "label" }, "Actor"), h("a", { href: hItem("actores/" + e.actorId) }, actorName(e.actorId))) : null,
+          fact("Duración", j.durationSec ? j.durationSec + " s" : null),
+          fact("Créditos", fmtCredits(j.credits)),
+          fact("Versiones", versions.length ? String(versions.length) : null),
+          fact("Actualizado", fmtDate(e.updatedAt))),
+        j.hook ? h("div", { class: "group" }, h("span", { class: "label" }, "Gancho"), h("p", {}, j.hook)) : null,
+        j.script ? h("div", { class: "group" }, h("span", { class: "label" }, "Guion"), h("p", { class: "script" }, j.script)) : null,
+        scenes.length ? h("div", { class: "group" },
+          h("span", { class: "label" }, "Storyboard"),
+          h("div", { class: "scenes" }, scenes.map((s) =>
+            h("a", { href: url(s.src), target: "_blank", rel: "noopener" }, picture(s.src, 480, "Escena " + s.n), "Escena " + s.n)))) : null,
+        versions.length ? h("div", { class: "group" },
+          h("span", { class: "label" }, "Historial"),
+          h("div", { class: "rows" }, [...versions].reverse().map((v) =>
+            h("div", { class: "row" },
+              h("button", { class: "thumb-btn", type: "button", disabled: !v.video, "aria-label": "Ver versión " + v.n,
+                onclick: () => { show(sources.findIndex((s) => s.src === v.video)); window.scrollTo(0, 0); } },
+                v.thumb ? picture(v.thumb, 240, "") : h("span", { class: "thumb" })),
+              h("div", {},
+                h("p", { class: "title" }, "Versión " + v.n + (v === cur ? " (actual)" : "")),
+                h("p", { class: "meta" }, [v.note, v.resolution, fmtCredits(v.credits) + " cr", fmtDate(v.createdAt)].filter(Boolean).join(" · "))),
+              h("div", { class: "end links" }, safeUrl(v.url) ? h("a", { href: safeUrl(v.url), target: "_blank", rel: "noopener" }, "Higgsfield") : null))))) : null,
+        safeUrl(j.finalUrl) ? h("p", { class: "links" }, h("a", { href: safeUrl(j.finalUrl), target: "_blank", rel: "noopener" }, "Ver el final en Higgsfield")) : null)));
 }
 
-window.addEventListener("hashchange", () => { render(); window.scrollTo(0, 0); });
-load(true);
-setInterval(() => load(false), REFRESH_MS);
+async function actorDetail(e, after) {
+  const j = e.json && typeof e.json === "object" ? e.json : {};
+  const files = new Set(e.files || []);
+  const file = (n) => (files.has(n) ? e.path + "/" + n : null);
+  const nVideos = (await api("/api/elementos?" + qs({ tipo: "video", actor: e.actorId, porPagina: 1 }))).total;
+  const nCreat = (await api("/api/elementos?" + qs({ tipo: "creativo", actor: e.actorId, porPagina: 1 }))).total;
+  const portrait = file("retrato.png") || e.cover;
+  const extra = [["angulos.png", "Ángulos"], ["character-sheet.png", "Ficha de personaje"]].filter(([n]) => file(n));
+  return h("section", { class: "section" },
+    h("div", { class: "detail" },
+      h("div", { class: "player" },
+        h("div", { class: "media", style: "aspect-ratio:4/5" }, portrait ? picture(portrait, 960, "Retrato de " + e.title) : h("div", { class: "placeholder" }, "Sin retrato")),
+        portrait ? h("a", { href: url(portrait), target: "_blank", rel: "noopener" }, "Abrir el original") : null),
+      h("div", { class: "info" },
+        h("div", { class: "pills" }, e.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null),
+        h("h1", {}, e.title),
+        detailActions(e, after),
+        h("div", { class: "links" }, exportButton("Exportar actor", exportRequest("actor", e.title, e.path), "Exportar actor " + e.title)),
+        h("div", { class: "facts" },
+          fact("Género", j.gender), fact("Edad aparente", j.apparentAge ? j.apparentAge + " años" : null), fact("Versión", j.version),
+          fact("Estilo", j.style, true), fact("Personalidad", j.personality, true), fact("Créditos", fmtCredits(j.credits))),
+        h("div", { class: "tags" }, (j.fitsNiches || []).map((n) => h("span", { class: "tag" }, n)), (j.avoidNiches || []).map((n) => h("span", { class: "tag no", title: "No encaja" }, n))),
+        h("div", { class: "links" },
+          h("a", { href: hSearch(new URLSearchParams({ tipo: "video", actor: e.actorId })) }, plural(nVideos, "video", "videos")),
+          h("a", { href: hSearch(new URLSearchParams({ tipo: "creativo", actor: e.actorId })) }, plural(nCreat, "creativo", "creativos")),
+          extra.map(([n, label]) => h("a", { href: url(file(n)), target: "_blank", rel: "noopener" }, label))))));
+}
+
+// ---------- start ----------
+
+// The skip link must not change the hash: the hash is the route.
+$("saltar").addEventListener("click", (ev) => { ev.preventDefault(); $("app").focus(); });
+window.addEventListener("hashchange", () => { route(false); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && location.protocol !== "file:") poll(); });
+if (location.protocol === "file:") {
+  // Opened by double-click: there is no server behind this page.
+  $("cabecera").hidden = true;
+  $("saltar").hidden = true;
+  $("app").replaceChildren(h("div", { class: "empty" },
+    h("h2", {}, "Pedile a Claude: abrí la galería"),
+    h("p", { class: "muted" }, "La galería funciona con un servidor local que Claude enciende por vos. Escribile “abrí la galería” y se abre en el navegador.")));
+} else {
+  (async () => {
+    try { await loadEstudio(); } catch (e) { /* the banner and the empty state explain it */ }
+    await route(false);
+    setInterval(poll, SALUD_MS);
+  })();
+}
 </script>
 </body>
 </html>

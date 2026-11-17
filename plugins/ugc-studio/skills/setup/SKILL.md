@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up UGC Studio in the current folder — check and install what is missing (the Higgsfield and BI-MCP MCP servers, Google Chrome, and on Linux Node and ffmpeg), install the persistent memory (Engram), create the studio folders and studio.json, and open the local gallery. Use when the user asks to set up, install, configure or repair the studio or its gallery, or when another UGC Studio skill finds no studio.json.
+description: Set up UGC Studio in the current folder — check and install what is missing (the Higgsfield and BI-MCP MCP servers, Google Chrome, Node.js for the gallery, and on Linux ffmpeg), install the persistent memory (Engram), create the studio folders and studio.json, and open the local gallery. Use when the user asks to set up, install, configure or repair the studio or its gallery, or when another UGC Studio skill finds no studio.json.
 ---
 
 # Set up UGC Studio
@@ -16,7 +16,7 @@ first and follow it exactly: the gallery only shows files saved where it says.
 
 Follow `${CLAUDE_PLUGIN_ROOT}/references/dependencias.md`: for each item, check whether it is
 already there and install only what is missing (Higgsfield and BI-MCP MCP servers, Google Chrome,
-and on Linux Node and ffmpeg). Engram is step 1b.
+Node.js 18+ for the gallery server, and on Linux ffmpeg). Engram is step 1b.
 
 Then call both connectors, read-only:
 
@@ -65,26 +65,31 @@ Edge or Brave in `/Applications` also work). If none is there, do not stop the s
 in one line that to make creatives with the brand's template they need Google Chrome
 (google.com/chrome), and that videos and creatives with text drawn by the AI work without it.
 
-## 3. Build and open the gallery
+## 3. Open the gallery
 
-The plugin hooks keep the gallery in sync on their own. Run them once now so it exists right away:
+The gallery is a small local server that the plugin hooks keep running and the folders feed by
+themselves. Run the hook once now (it validates the files and starts the server), then open the
+gallery for the user:
 
 ```sh
 sh "${CLAUDE_PLUGIN_ROOT}/scripts/sincronizar.sh" --resumen
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open
 ```
 
-Check that `galeria.html` and `.galeria/datos.js` exist in the studio folder. Then open it for
-the user with `open galeria.html` on macOS, or `xdg-open galeria.html` on Linux.
+Check that `galeria.html` exists in the studio folder and that `galeria.sh open` printed an
+address (`http://127.0.0.1:…`). It needs Node.js 18 or newer: if it says Node is missing, go back to
+the Node item of `dependencias.md`.
 
-If the files are missing after running the script, tell the user the gallery could not be built
-and give them the exact error; do not continue as if it worked.
+If the gallery does not start, tell the user the gallery could not be opened and give them the
+exact error; do not continue as if it worked.
 
 ## 4. Hand over
 
 Tell the user, in Spanish and in a few lines:
 
-- The gallery opened in their browser. To see it again: double-click `galeria.html` in the studio
-  folder, or ask "abrí la galería". It updates by itself while Claude works.
+- The gallery opened in their browser. To see it again, ask "abrí la galería" (running
+  `galeria.sh open`); double-clicking `galeria.html` does not work any more. It updates by itself
+  while Claude works.
 - Always open Claude on this same folder; otherwise it cannot find their actors and videos.
 - Credits available (from step 1).
 - If the memory was installed in this setup: open a new session in this same folder (and, on

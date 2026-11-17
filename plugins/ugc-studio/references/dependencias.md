@@ -67,15 +67,61 @@ creatives with text drawn by the AI still work.
   Linux: the distribution's package manager (for example `sudo apt install chromium` or
   `sudo pacman -S chromium`); it needs the user's password, so ask them to run it.
 
-## 5. Linux only: Node and ffmpeg
+## 5. Node.js 18 or newer — recommended
+
+Runs the gallery: a small local server (`scripts/galeria.sh`) that Claude starts by itself and the
+browser talks to. On Linux it also validates the studio `.json` files. Without it the work is
+saved all the same, but the gallery does not open.
+
+- **Already there?** `node --version` prints 18 or higher, or an earlier setup left a portable one:
+  `~/.ugc-studio/node/bin/node --version` prints 18 or higher. Either one is enough
+  (`galeria.sh` uses the first it finds).
+- **Install** (only if missing or older than 18): a portable copy of the official build in
+  `~/.ugc-studio/node`. It needs no administrator password and touches nothing else on the
+  computer. Tell the user first: "Voy a instalar Node.js (para la galería) en tu carpeta de usuario,
+  sin permisos de administrador."
+
+  ```sh
+  case "$(uname -s)-$(uname -m)" in
+    Darwin-arm64) PLAT=darwin-arm64 ;;
+    Darwin-x86_64) PLAT=darwin-x64 ;;
+    Linux-x86_64) PLAT=linux-x64 ;;
+    Linux-aarch64 | Linux-arm64) PLAT=linux-arm64 ;;
+    *) echo "unsupported platform"; PLAT= ;;
+  esac
+  # Current LTS: the newest release of https://nodejs.org/dist/index.json with an LTS name.
+  V=$(curl -fsSL https://nodejs.org/dist/index.json | grep '"lts":"' | sed 's/.*"version":"\([^"]*\)".*/\1/' | head -n 1)
+  # Download into a new empty folder and verify the file against that release's SHASUMS256.txt.
+  TMP=$(mktemp -d)
+  curl -fsSL -o "$TMP/node-$V-$PLAT.tar.gz" "https://nodejs.org/dist/$V/node-$V-$PLAT.tar.gz"
+  curl -fsSL -o "$TMP/SHASUMS256.txt" "https://nodejs.org/dist/$V/SHASUMS256.txt"
+  (cd "$TMP" && grep " node-$V-$PLAT.tar.gz\$" SHASUMS256.txt >check.txt &&
+    { sha256sum -c check.txt 2>/dev/null || shasum -a 256 -c check.txt; })
+  ```
+
+  Only if that check prints `OK` for the file, extract it (a previous portable copy that was too
+  old is moved aside to `~/.ugc-studio/node.old` first, never deleted):
+
+  ```sh
+  [ -d ~/.ugc-studio/node ] && mv ~/.ugc-studio/node ~/.ugc-studio/node.old
+  mkdir -p ~/.ugc-studio/node
+  tar -xzf "$TMP/node-$V-$PLAT.tar.gz" -C ~/.ugc-studio/node --strip-components=1
+  ~/.ugc-studio/node/bin/node --version
+  ```
+
+  If the download, the `SHASUMS256.txt` line or the check fails, install nothing: say in plain
+  words that the gallery will not open until Node.js is installed, and that the user can install
+  it from https://nodejs.org (the LTS version) and then ask again. Do not add it to the PATH or
+  use `sudo`.
+
+## 6. Linux only: ffmpeg
 
 On macOS nothing else is needed: the scripts use tools macOS ships with. On Linux:
 
-- **Node** validates the studio `.json` files (`node --version`).
-- **ffmpeg** makes the video thumbnails (`ffmpeg -version`).
-- **Install** (only if missing) with the package manager, for example
-  `sudo apt install nodejs ffmpeg` or `sudo pacman -S nodejs ffmpeg`; it needs the user's
-  password, so ask them to run it.
+- **ffmpeg** makes the video thumbnails and the gallery's image thumbnails (`ffmpeg -version`).
+  Without it the gallery shows the original images, which is slower with many pieces.
+- **Install** (only if missing) with the package manager, for example `sudo apt install ffmpeg` or
+  `sudo pacman -S ffmpeg`; it needs the user's password, so ask them to run it.
 
 ## After installing
 
