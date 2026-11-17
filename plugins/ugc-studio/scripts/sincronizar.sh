@@ -19,6 +19,7 @@ export LC_ALL
 ROOT=${CLAUDE_PROJECT_DIR:-$PWD}
 [ -f "$ROOT/studio.json" ] || exit 0
 cd "$ROOT" || exit 0
+ROOT=$(pwd) # absolute from here on: a relative CLAUDE_PROJECT_DIR no longer points anywhere
 
 PLUGIN=${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
 SUMMARY=0
@@ -138,7 +139,8 @@ fi
 if [ $try_start -eq 1 ]; then
   # The launcher prints the address without the access token; the token never goes into this
   # output, which ends up in the conversation.
-  startlog=".galeria/arranque.err.$$"
+  mkdir -p "$ROOT/.galeria"
+  startlog="$ROOT/.galeria/arranque.err.$$"
   if started=$(CLAUDE_PROJECT_DIR="$ROOT" CLAUDE_PLUGIN_ROOT="$PLUGIN" sh "$PLUGIN/scripts/galeria.sh" start 2>"$startlog"); then
     GALERIA_URL=$started
     rm -f "$NOSERVER"

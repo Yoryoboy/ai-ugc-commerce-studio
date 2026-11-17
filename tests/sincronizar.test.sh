@@ -232,5 +232,26 @@ CLAUDE_PROJECT_DIR=$NN HOME="$TMP/home" PATH="$BIN" sh "$SCRIPT" >"$TMP/out" 2>"
 check "no node, hook after a broken JSON: exit 0 (no validator available)" "$?" "0"
 check "no node: hook output is empty" "$(cat "$TMP/out")" ""
 
+# --- the start capture is anchored to the studio ------------------------------------------------
+# A relative CLAUDE_PROJECT_DIR (the hook enters the studio before it starts the server) still
+# starts the gallery, and nothing is left behind in .galeria.
+mkdir -p "$TMP/rel"
+RS=$(new_studio rel/studio)
+(cd "$TMP/rel" && CLAUDE_PROJECT_DIR=studio sh "$SCRIPT" --resumen >"$TMP/out" 2>"$TMP/err")
+check "relative studio folder: exit 0" "$?" "0"
+case $(cat "$TMP/out") in *"Gallery: http://127.0.0.1:"[0-9]*"/ "*) pass "relative studio folder: the gallery starts" ;; *) fail "relative studio folder: the gallery starts ($(cat "$TMP/out"))" ;; esac
+check "relative studio folder: no capture file left" "$(ls "$RS/.galeria" | grep -c '^arranque.err')" "0"
+[ -e "$TMP/rel/studio/studio/.galeria" ] && fail "relative studio folder: nothing created under the folder twice" || pass "relative studio folder: nothing created under the folder twice"
+CLAUDE_PROJECT_DIR=$RS sh "$REPO/plugins/ugc-studio/scripts/galeria.sh" stop >/dev/null 2>&1
+
+# What the launcher says on stderr when it fails reaches the summary, and the capture file is removed.
+cp -R "$CLAUDE_PLUGIN_ROOT" "$TMP/plugin-stub"
+printf '#!/bin/sh\necho "stub: no gallery today" >&2\nexit 1\n' >"$TMP/plugin-stub/scripts/galeria.sh"
+SS=$(new_studio stub)
+CLAUDE_PLUGIN_ROOT="$TMP/plugin-stub" CLAUDE_PROJECT_DIR=$SS sh "$SCRIPT" --resumen >"$TMP/out" 2>"$TMP/err"
+check "failing launcher: summary exit 0" "$?" "0"
+has "failing launcher: its message is in the summary" "$(cat "$TMP/out")" "stub: no gallery today"
+check "failing launcher: no capture file left" "$(ls "$SS/.galeria" | grep -c '^arranque.err')" "0"
+
 printf '\n%s\n' "$([ $fails -eq 0 ] && echo 'All checks passed.' || echo "$fails check(s) failed.")"
 [ $fails -eq 0 ]

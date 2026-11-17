@@ -130,6 +130,47 @@ function piezasDe(ruta, data, files) {
   });
 }
 
+// Files of older versions of a creative or a video: what "clean old versions" moves to the trash.
+// It never moves what could still be current, so a half-made version cannot lose its newest file:
+//  - video: borrador-vN.mp4 and thumb-vN.jpg with N below the last version of video.json (or below
+//    the highest N on disk, if that is lower: the last version may not have its files yet).
+//    final.mp4, prompts, scenes and the storyboard stay.
+//  - creative: per slot, <slot>-vN.png, <slot>-base-vN.png and <slot>-diseno-vN.html with N below
+//    the highest finished piece of that slot (below the highest file of any kind if the slot has no
+//    finished piece). Prompts stay.
+function versionesAntiguas(e) {
+  const data = esObjeto(e.data) ? e.data : {};
+  const viejos = [];
+  if (e.kind === "video") {
+    const versiones = Array.isArray(data.versions) ? data.versions : [];
+    const ultima = versiones.length ? Number((versiones[versiones.length - 1] || {}).n) || versiones.length : Infinity;
+    const hallados = [];
+    for (const f of e.files) {
+      const r = /^(?:borrador-v(\d+)\.mp4|thumb-v(\d+)\.jpg)$/.exec(f);
+      if (r) hallados.push({ f, n: Number(r[1] || r[2]) });
+    }
+    const desde = Math.min(ultima, Math.max(0, ...hallados.map((x) => x.n)));
+    for (const x of hallados) if (x.n < desde) viejos.push(x.f);
+  } else if (e.kind === "creative") {
+    const slots = new Map(); // slot -> {finales: max N of finished pieces, todos: max N of any file, files}
+    for (const f of e.files) {
+      const r = /^(.+?)-(?:base-v(\d+)\.png|diseno-v(\d+)\.html|v(\d+)\.png)$/.exec(f);
+      if (!r) continue;
+      const n = Number(r[2] || r[3] || r[4]);
+      if (!slots.has(r[1])) slots.set(r[1], { finales: 0, todos: 0, files: [] });
+      const s = slots.get(r[1]);
+      s.files.push({ f, n });
+      s.todos = Math.max(s.todos, n);
+      if (r[4] !== undefined) s.finales = Math.max(s.finales, n);
+    }
+    for (const s of slots.values()) {
+      const desde = s.finales || s.todos;
+      for (const x of s.files) if (x.n < desde) viejos.push(x.f);
+    }
+  }
+  return viejos.sort(cmp).map((f) => e.path + "/" + f);
+}
+
 function versionesDeVideo(ruta, data, files) {
   const set = new Set(files);
   const file = (name) => (set.has(name) ? ruta + "/" + name : null);
@@ -157,6 +198,8 @@ function derivar(e) {
     const piezas = piezasDe(e.path, data, e.files);
     const c = piezas[0] && piezas[0].current;
     cover = c ? c.src.slice(e.path.length + 1) : null;
+    e.tipoCreativo = data.type === "carousel" ? "carousel" : "static";
+    e.piezasActuales = piezas.filter((p) => p.current).length;
   } else if (e.kind === "video") {
     const vs = versionesDeVideo(e.path, data, e.files);
     const ult = vs[vs.length - 1];
@@ -172,6 +215,8 @@ function derivar(e) {
   e.productId = e.kind === "product" || e.kind === "video" || e.kind === "creative" ? segs[2] : null;
   e.productPath = e.productId ? segs.slice(0, 3).join("/") : null;
   e.batch = e.kind === "creative" ? str(data.batch) : null;
+  e.tipoCreativo ??= null;
+  e.piezasActuales ??= null;
   e.actorId = e.kind === "actor" ? str(data.id) || ultimo : str(data.actorId);
   e.angulo = e.kind === "creative" ? str(esObjeto(data.concept) && data.concept.angle) : str(data.angle);
   e.hook = str(data.hook);
@@ -449,6 +494,7 @@ export async function crearServidor(opts = {}) {
       const producto = e.productPath ? entidades.get(e.productPath) : null;
       const actor = e.actorId ? actores.get(e.actorId) : null;
       e.clienteNombre = e.profileId ? nombresCliente.get(e.profileId) || e.profileId : null;
+      e.productoTitulo = producto ? producto.titulo : null;
       e.busqueda = norm([
         e.titulo, e.kind === "product" ? e.productId : producto && producto.titulo, e.clienteNombre, e.angulo, e.hook, e.adName,
         e.actorId, actor && actor.titulo,
@@ -460,9 +506,12 @@ export async function crearServidor(opts = {}) {
     kind: e.kind, path: e.path, title: e.titulo, status: e.estado, archived: e.archivado, broken: !!e.error,
     profileId: e.profileId, productId: e.productId, batch: e.batch, actorId: e.actorId, updatedAt: e.updatedAt,
     cover: e.cover, coverThumb: e.cover ? "/miniatura/" + e.cover.split("/").map(encodeURIComponent).join("/") + "?w=480" : null,
+    productTitle: e.productoTitulo ?? null, clientName: e.profileId ? e.clienteNombre : null,
+    type: e.tipoCreativo, pieces: e.piezasActuales,
   });
 
   function vistaElemento(e) {
+    prepararVistas();
     const out = { ...vistaItem(e), json: e.data, error: e.error, files: e.files };
     const data = esObjeto(e.data) ? e.data : {};
     if (e.kind === "creative") {
@@ -489,6 +538,7 @@ export async function crearServidor(opts = {}) {
     const status = {};
     let archived = 0;
     let broken = 0;
+    let creditsUsed = 0;
     const clientes = new Map();
     const cliente = (id) => {
       if (!clientes.has(id)) clientes.set(id, { profileId: id, name: nombresCliente.get(id) || id, products: 0, creatives: 0, videos: 0 });
@@ -497,6 +547,8 @@ export async function crearServidor(opts = {}) {
     for (const id of listarCarpetas(abs("clientes"))) cliente(id);
     for (const e of entidades.values()) {
       if (e.error) broken++;
+      // Credits spent, archived items included; only actors, videos and creatives carry credits.
+      if ((e.kind === "actor" || e.kind === "video" || e.kind === "creative") && e.data && typeof e.data.credits === "number" && Number.isFinite(e.data.credits)) creditsUsed += e.data.credits;
       if (e.archivado) { archived++; continue; }
       byKind[e.kind] = (byKind[e.kind] || 0) + 1;
       if (e.estado) {
@@ -513,6 +565,8 @@ export async function crearServidor(opts = {}) {
     return {
       studio: idx.studioData, studioError: idx.studioError,
       counts: { byKind, status, archived, broken },
+      creditsUsed: Math.round(creditsUsed * 100) / 100,
+      trashCount: contarPapelera(),
       clients: [...clientes.values()].sort((a, b) => cmp(a.profileId, b.profileId)),
     };
   }
@@ -543,6 +597,7 @@ export async function crearServidor(opts = {}) {
     const producto = q.get("producto") || null;
     const estado = q.get("estado") || null;
     const actor = q.get("actor") || null;
+    const lote = q.get("lote") || null;
     const archivados = q.get("archivados") || "0";
     const terminos = norm(q.get("q") || "").split(/\s+/).filter(Boolean);
     let lista = ordenadas().filter((e) => {
@@ -551,6 +606,7 @@ export async function crearServidor(opts = {}) {
       if (producto && e.productId !== producto) return false;
       if (estado && e.estado !== estado) return false;
       if (actor && e.actorId !== actor) return false;
+      if (lote && e.batch !== lote) return false;
       if (archivados === "solo" ? !e.archivado : archivados !== "1" && e.archivado) return false;
       if (desde !== null && e.updatedMs < desde) return false;
       if (hasta !== null && e.updatedMs > hasta) return false;
@@ -817,6 +873,25 @@ export async function crearServidor(opts = {}) {
     aplicarCambio(segs); // a folder with children, or a file inside an item
   }
 
+  // Moves the files of older versions of a creative or video to the trash, one ordinary trash entry
+  // per file (so each one restores like any other file). The list is made first; a file that cannot
+  // be moved does not stop the others and the result says how many went.
+  function limpiarVersiones(ruta) {
+    const e = entidadDe(ruta);
+    if (e.kind !== "creative" && e.kind !== "video") throw new ErrorAccion("only creatives and videos have versions to clean");
+    const archivos = versionesAntiguas(e);
+    const ids = [];
+    const fallos = [];
+    for (const f of archivos) {
+      try { ids.push(aPapelera(f)); } catch (err) {
+        if (!(err instanceof ErrorAccion)) throw err;
+        fallos.push(`${f.slice(e.path.length + 1)} (${err.message})`);
+      }
+    }
+    if (fallos.length) return { ruta, ok: false, error: `moved ${ids.length} of ${archivos.length} files; failed: ${fallos.join("; ")}`, movidos: ids.length, ids };
+    return { ruta, ok: true, movidos: ids.length, ids };
+  }
+
   function aplicarAccion(a) {
     const ruta = esObjeto(a) && typeof a.ruta === "string" ? a.ruta : "";
     try {
@@ -838,6 +913,8 @@ export async function crearServidor(opts = {}) {
           return { ruta, ok: true };
         case "papelera":
           return { ruta, ok: true, id: aPapelera(ruta) };
+        case "limpiarVersiones":
+          return limpiarVersiones(ruta);
         case "restaurar":
           restaurar(ruta);
           return { ruta, ok: true };
@@ -848,6 +925,11 @@ export async function crearServidor(opts = {}) {
       if (err instanceof ErrorAccion) return { ruta, ok: false, error: err.message };
       return { ruta, ok: false, error: "internal error: " + (err.code || err.message) };
     }
+  }
+
+  // Entries in the trash, counted from the folder names only (cheap: /api/estudio reports it).
+  function contarPapelera() {
+    try { return fs.readdirSync(path.join(raiz, ".papelera")).filter((id) => ID_PAPELERA.test(id)).length; } catch { return 0; }
   }
 
   function entradasPapelera() {
@@ -885,6 +967,21 @@ export async function crearServidor(opts = {}) {
       } catch { /* leave it */ }
     }
     return { eliminados: n };
+  }
+
+  // The item named by ?ruta= of a GET, checked to be inside the studio.
+  function entidadDeConsulta(q) {
+    const s = segmentos(q.get("ruta"));
+    if (!s || !ROOTS.has(s[0])) throw new ErrorHttp(400, "invalid ruta");
+    const e = entidades.get(s.join("/"));
+    if (!e) throw new ErrorHttp(404, "not found");
+    try {
+      if (!dentro(raiz, fs.realpathSync(abs(e.path)))) throw new ErrorHttp(403, "path not allowed");
+    } catch (err) {
+      if (err instanceof ErrorHttp) throw err;
+      throw new ErrorHttp(404, "not found");
+    }
+    return e;
   }
 
   // ----- HTTP -----
@@ -996,18 +1093,13 @@ export async function crearServidor(opts = {}) {
       if (ruta === "estudio") return enviarJson(res, 200, vistaEstudio(), nostore);
       if (ruta === "elementos") return enviarJson(res, 200, elementos(q), nostore);
       if (ruta === "papelera") return enviarJson(res, 200, { entries: entradasPapelera() }, nostore);
-      if (ruta === "elemento") {
-        const s = segmentos(q.get("ruta"));
-        if (!s || !ROOTS.has(s[0])) throw new ErrorHttp(400, "invalid ruta");
-        const e = entidades.get(s.join("/"));
-        if (!e) throw new ErrorHttp(404, "not found");
-        try {
-          if (!dentro(raiz, fs.realpathSync(abs(e.path)))) throw new ErrorHttp(403, "path not allowed");
-        } catch (err) {
-          if (err instanceof ErrorHttp) throw err;
-          throw new ErrorHttp(404, "not found");
-        }
-        return enviarJson(res, 200, vistaElemento(e), nostore);
+      if (ruta === "elemento") return enviarJson(res, 200, vistaElemento(entidadDeConsulta(q)), nostore);
+      if (ruta === "versiones-antiguas") {
+        // Dry run of the limpiarVersiones action: the files it would move, nothing is changed.
+        const e = entidadDeConsulta(q);
+        if (e.kind !== "creative" && e.kind !== "video") throw new ErrorHttp(400, "only creatives and videos have versions to clean");
+        const files = versionesAntiguas(e);
+        return enviarJson(res, 200, { ruta: e.path, total: files.length, files }, nostore);
       }
       throw new ErrorHttp(404, "not found");
     }

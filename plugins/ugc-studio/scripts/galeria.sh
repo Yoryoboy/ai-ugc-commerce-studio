@@ -12,7 +12,9 @@
 #                       <studio>/.galeria/abrir.html (mode 600), so the token is never in a
 #                       command line or in any output
 #
-# A server left from another plugin version or plugin folder is stopped and replaced on start.
+# A server of an older plugin version, or of the same version from another plugin folder, is stopped
+# and replaced on start. A server of a newer plugin is kept and used as it is, so two sessions with
+# different plugin versions do not keep replacing each other's server.
 # The server listens before it has indexed the studio (health says "listo": false until then).
 # UGC_GALERIA_START_WAIT (seconds, default 5) is how long start waits for it to listen; if it does
 # not, the process it spawned is killed and start fails.
@@ -90,9 +92,11 @@ running() {
   alive "$pid" && healthy "$port" "$pid"
 }
 
-# ready: the running server has finished indexing the studio.
+# ready: the running server has finished indexing the studio. Returns 2 when it cannot be told (no
+# curl or wget), so callers do not wait for an answer that never comes.
 ready() {
-  answer=$(health "$(field port)") || return 1
+  answer=$(health "$(field port)")
+  case $? in 0) ;; 2) return 2 ;; *) return 1 ;; esac
   case $answer in *'"listo":true'*) return 0 ;; esac
   return 1
 }
@@ -116,11 +120,50 @@ state_plugin() {
   sed -n 's/^ *"plugin": *"\(.*\)",\{0,1\} *$/\1/p' "$STATE" | head -n 1 | sed 's/\\"/"/g; s/\\\\/\\/g'
 }
 
-# current: the server in servidor.json is this plugin's version, run from this plugin folder. A
-# server that recorded no plugin folder (an older one) cannot be trusted either.
-current() {
+# ver_cmp <a> <b>: prints 1, 0 or -1 when version a is newer than, equal to or older than b, the way
+# `sort -V` orders them: dotted parts compare as numbers (0.10.0 is newer than 0.9.0), and a
+# prerelease (1.0.0-beta) is older than its release.
+ver_cmp() {
+  a=${1#v}
+  b=${2#v}
+  pa=""
+  pb=""
+  case $a in *-*) pa=${a#*-}; a=${a%%-*} ;; esac
+  case $b in *-*) pb=${b#*-}; b=${b%%-*} ;; esac
+  while [ -n "$a" ] || [ -n "$b" ]; do
+    xa=${a%%.*}
+    xb=${b%%.*}
+    case $a in *.*) a=${a#*.} ;; *) a="" ;; esac
+    case $b in *.*) b=${b#*.} ;; *) b="" ;; esac
+    xa=${xa%%[!0-9]*}
+    xb=${xb%%[!0-9]*}
+    xa=${xa:-0}
+    xb=${xb:-0}
+    if [ "$xa" -gt "$xb" ]; then echo 1; return; fi
+    if [ "$xa" -lt "$xb" ]; then echo -1; return; fi
+  done
+  if [ "$pa" = "$pb" ]; then echo 0
+  elif [ -z "$pa" ]; then echo 1
+  elif [ -z "$pb" ]; then echo -1
+  elif [ "$(printf '%s\n%s\n' "$pa" "$pb" | sort | head -n 1)" = "$pa" ]; then echo -1
+  else echo 1
+  fi
+}
+
+# usable: the server in servidor.json can serve this caller. It is replaced only when this plugin is
+# newer than the server's, or has the same version but runs from another folder (the server's folder
+# may be stale). A server of a newer plugin is kept and used as it is. A server that recorded no
+# version or no plugin folder (an older one) cannot be trusted.
+usable() {
   want=$(plugin_version)
-  if [ -n "$want" ] && [ "$(field version)" != "$want" ]; then return 1; fi
+  if [ -n "$want" ]; then
+    have=$(field version)
+    [ -n "$have" ] || return 1
+    case $(ver_cmp "$want" "$have") in
+      1) return 1 ;;
+      -1) return 0 ;;
+    esac
+  fi
   [ "$(state_plugin)" = "$(plugin_root)" ]
 }
 
@@ -168,7 +211,7 @@ stop_server() {
 take_lock() {
   i=0
   until mkdir "$LOCK" 2>/dev/null; do
-    if running && current; then
+    if running && usable; then
       print_url
       return 2
     fi
@@ -197,7 +240,7 @@ release_lock() {
 }
 
 cmd_start() {
-  if running && current; then
+  if running && usable; then
     print_url
     return 0
   fi
@@ -212,12 +255,12 @@ cmd_start() {
   take_lock
   [ $? -eq 2 ] && return 0
   trap 'release_lock' EXIT
-  if running && current; then
+  if running && usable; then
     print_url
     return 0
   fi
 
-  # A server from another plugin version or folder: stop it (gracefully) and start the current one.
+  # A server of an older plugin version or from another folder: stop it (gracefully) and start this one.
   # Not only when it answers the probe: an older server needs the token for /api/salud (it answers
   # 401), and it is still ours to stop. stop_server checks the pid is a live servidor.mjs.
   stop_server || true
@@ -305,7 +348,9 @@ cmd_open() {
   cmd_start >/dev/null || return 1
   # A server still indexing a big studio shows nothing useful yet: give it a moment (best effort).
   i=0
-  while [ $i -lt 100 ] && ! ready; do
+  while [ $i -lt 100 ]; do
+    ready
+    case $? in 0 | 2) break ;; esac # ready, or no curl/wget to ask: do not wait
     i=$((i + 1))
     sleep 0.1
   done

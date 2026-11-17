@@ -275,8 +275,10 @@ starts it if needed and opens it in the browser (`start`, `stop`, `status` and `
 The session hook starts it by itself; it stops after 30 idle minutes (`UGC_GALERIA_IDLE_MIN`). It
 needs Node 18 or newer (`references/dependencias.md`), listens on `127.0.0.1` only and indexes the
 folders in memory, so nothing has to be rebuilt after saving a file. Double-clicking `galeria.html`
-only shows a notice. A server left from another plugin version or folder is stopped and replaced
-the next time the hook or `galeria.sh` starts it. The server listens before it has indexed the
+only shows a notice. A server of an older plugin version (or of the same version from another
+plugin folder) is stopped and replaced the next time the hook or `galeria.sh` starts it; a server
+of a newer plugin version is kept and used as it is, so two sessions with different plugin versions
+do not keep replacing each other's server. The server listens before it has indexed the
 studio: until then (a moment, longer in a huge studio) its data answers are `503` with
 `Retry-After`, and `/api/salud` says `"listo": false`.
 
@@ -300,7 +302,27 @@ studio: until then (a moment, longer in a huge studio) its data answers are `503
   `{"id": "…", "originalPath": "clientes/acme/MLA1/creativos/2026-11-16-x-y", "trashedAt": "2026-11-17T10:00:00Z", "kind": "folder"}`
   (`kind` is `folder` or `file`). Anything inside is not in the gallery. Restoring puts it back
   and fails if something already exists at the original path; emptying the trash deletes for good.
-  Never write there or delete user work with `rm`: the gallery moves it to the trash.
+  Never write there or delete user work with `rm`: the gallery moves it to the trash. The gallery's
+  Papelera view empties it for good (everything, or what is older than 30 days) after asking, and
+  its tab shows how many entries it holds.
+- Cleaning old versions: the action `limpiarVersiones` (gallery: "Limpiar versiones viejas" in the
+  detail view and in multi-select, after a dry run that counts the files) moves the files of
+  non-current versions of a creative or video to the trash, one ordinary trash entry per file
+  (`kind: "file"`), so each one restores like any other file. A video keeps the last version's
+  `borrador-vN.mp4` and `thumb-vN.jpg` (never fewer than its newest files on disk), `final.mp4`,
+  prompts, scenes and `storyboard.jpg`. A creative keeps, per slot, the files of the highest `N`
+  of its finished piece `<slot>-vN.png` (the `-base-` and `-diseno-` files of that `N` or newer too)
+  and every `prompt-vN.md`; if a slot has no finished piece yet it keeps its highest `N` of any
+  kind. The JSON files are never touched. The dry run is
+  `GET /api/versiones-antiguas?ruta=<item path>` → `{ruta, total, files}`; the action is
+  `POST /api/acciones {acciones: [{tipo: "limpiarVersiones", ruta}]}` → `{ruta, ok, movidos, ids}`.
+- Reopening: the gallery's "Reabrir" sets `status` of a discarded creative or video back to
+  `draft` (the `estado` action).
+- What the gallery reads from the server, besides the JSON files: `/api/elementos` items carry
+  `productTitle`, `clientName`, `type` (`static` or `carousel`, creatives only) and `pieces` (slots
+  of a creative that have a current file); `lote=<batch>` filters creatives by `batch`;
+  `/api/estudio` carries `creditsUsed` (the sum of `credits` of actors, videos and creatives, archived
+  ones included) and `trashCount`.
 
 ## Packages
 

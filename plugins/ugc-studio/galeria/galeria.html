@@ -229,6 +229,8 @@ body.has-bar .estado { bottom: 92px; }
 .empty p { max-width: 56ch; }
 .notice { font-size: 0.85rem; padding: 10px 12px; border-radius: 8px; background: var(--bad-soft); color: var(--bad); overflow-wrap: anywhere; }
 .foot { font-size: 0.8rem; color: var(--muted); }
+.tag.type { background: var(--info-soft); color: var(--info); font-weight: 600; }
+.trash-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .chip.export { white-space: nowrap; }
 .chip.export:hover { border-color: var(--accent); }
 .skeleton { color: var(--muted); padding: 24px 0; text-align: center; }
@@ -297,6 +299,8 @@ const ACCION = {
   aprobar: { tipo: "estado", valor: "approved", past: "aprobados", one: "aprobado", solo: ["creative"], skip: "Solo los creativos se aprueban acá: un video se aprueba cuando Claude lo finaliza." },
   revisar: { tipo: "estado", valor: "draft", past: "marcados por revisar", one: "marcado por revisar", solo: ["creative"], skip: "Solo aplica a creativos." },
   descartar: { tipo: "estado", valor: "discarded", past: "descartados", one: "descartado", solo: ["creative", "video"], skip: "Los actores y productos no se descartan: archivalos o mandalos a la papelera." },
+  reabrir: { tipo: "estado", valor: "draft", past: "reabiertos", one: "reabierto", solo: ["creative", "video"], cuando: (e) => e.status === "discarded", skip: "Solo se reabren los creativos y videos descartados." },
+  limpiarVersiones: { tipo: "limpiarVersiones", past: "limpiados", one: "limpiado", solo: ["creative", "video"], skip: "Solo los creativos y los videos tienen versiones para limpiar." },
   archivar: { tipo: "archivar", past: "archivados", one: "archivado" },
   desarchivar: { tipo: "desarchivar", past: "desarchivados", one: "desarchivado" },
   papelera: { tipo: "papelera", past: "enviados a la papelera", one: "enviado a la papelera" },
@@ -304,7 +308,7 @@ const ACCION = {
 };
 
 const state = {
-  conn: "ok", busy: false, estudio: null, actores: null, signal: null,
+  conn: "ok", busy: false, pendingRefresh: false, estudio: null, actores: null, signal: null,
   selection: new Map(), barMode: "items", view: null, productos: new Map(), route: null,
 };
 let gen = 0;
@@ -428,14 +432,24 @@ async function loadActores() {
   } catch (e) { if (!state.actores) state.actores = []; }
 }
 
+// A signal that aborts after `ms`. AbortSignal.timeout does not exist before Safari 16 (and Chrome
+// 103): there a plain AbortController and timer do the same, and `clear()` drops the timer.
+function timeoutSignal(ms) {
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") return { signal: AbortSignal.timeout(ms), clear() {} };
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  return { signal: ctl.signal, clear: () => clearTimeout(timer) };
+}
+
 async function poll() {
   if (poll.running) return;
   poll.running = true;
   try {
     let res;
+    const limit = timeoutSignal(4000);
     try {
-      res = await fetch("/api/salud", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(4000) });
-    } catch (e) { setConn("down"); return; }
+      res = await fetch("/api/salud", { credentials: "same-origin", cache: "no-store", signal: limit.signal });
+    } catch (e) { setConn("down"); return; } finally { limit.clear(); }
     if (res.status === 401) { setConn("token"); return; }
     if (!res.ok) { setConn("down"); return; }
     const salud = await res.json().catch(() => null);
@@ -452,7 +466,11 @@ async function poll() {
       await route(true);
       return;
     }
-    if (before !== null && before !== JSON.stringify(state.estudio) && idle()) {
+    // The studio changed: redraw the view, unless the user is in the middle of something (a
+    // selection, a dialog, a playing video). The change is remembered and drawn once they are idle.
+    if (before !== null && before !== JSON.stringify(state.estudio)) state.pendingRefresh = true;
+    if (state.pendingRefresh && idle()) {
+      state.pendingRefresh = false;
       await loadActores();
       await refreshView(true);
     }
@@ -506,6 +524,7 @@ function replaceHash(hash) { history.replaceState(null, "", hash); }
 async function route(silent) {
   const r = parseHash();
   const my = ++gen;
+  state.pendingRefresh = false; // this draw reads the current data
   state.route = r;
   state.view = null;
   state.barMode = "items";
@@ -595,7 +614,7 @@ function renderHeader() {
   const byKind = e.counts.byKind || {};
   const cr = st("creative");
   const vi = st("video");
-  const used = [e.creditsUsed, e.counts.creditsUsed, credits.used].find((n) => typeof n === "number");
+  const used = e.creditsUsed;
   const statLink = (text, tipo, estado) => h("a", { href: hSearch(new URLSearchParams({ tipo, estado })) }, text);
   const review = (cr.draft || 0) + (vi.storyboard || 0) + (vi.draft || 0);
   $("medidor").replaceChildren(
@@ -606,7 +625,7 @@ function renderHeader() {
     h("div", { class: "tile" },
       h("span", { class: "label" }, "Créditos usados"),
       h("span", { class: "value" }, fmtCredits(used)),
-      h("span", { class: "sub" }, used === undefined ? "El servidor todavía no lo informa" : "En actores, videos y creativos")),
+      h("span", { class: "sub" }, "En actores, videos y creativos")),
     h("div", { class: "tile" },
       h("span", { class: "label" }, "Creativos"),
       h("span", { class: "value" }, String(byKind.creative || 0)),
@@ -626,6 +645,8 @@ function renderHeader() {
       h("span", { class: "value" }, String(review)),
       h("span", { class: "sub" },
         h("a", { href: hSearch(new URLSearchParams({ archivados: "solo" })) }, plural(e.counts.archived || 0, "archivado", "archivados")))));
+  const trashTab = $("nav").querySelector('[data-nav="papelera"]');
+  fill(trashTab, "Papelera", e.trashCount ? h("span", { class: "count", "aria-label": plural(e.trashCount, "elemento", "elementos") }, String(e.trashCount)) : null);
   $("export-todo").replaceChildren(exportButton("Exportar todo el estudio", exportRequest("studio")));
 }
 
@@ -771,6 +792,8 @@ function renderBar() {
     : [
       barButton("aprobar", "Aprobar", "primary", !kinds(["creative"])),
       barButton("descartar", "Descartar", "", !kinds(["creative", "video"])),
+      barButton("reabrir", "Reabrir", "", !sel.some((s) => ACCION.reabrir.solo.includes(s.kind) && ACCION.reabrir.cuando(s))),
+      barButton("limpiarVersiones", "Limpiar versiones", "", !kinds(["creative", "video"])),
       barButton("archivar", "Archivar", "", !sel.some((s) => !s.archived)),
       barButton("desarchivar", "Desarchivar", "", !sel.some((s) => s.archived)),
       barButton("papelera", "Papelera", "danger"),
@@ -781,7 +804,7 @@ function renderBar() {
     h("button", { class: "btn spacer", type: "button", onclick: () => { clearSelection(); document.querySelectorAll(".item.selected, .row.selected").forEach((c) => {
       c.classList.remove("selected");
       const i = c.querySelector("input[type=checkbox]"); if (i) i.checked = false;
-    }); if (state.signal) state.signal(); } }, "Limpiar selección")));
+    }); if (state.signal) state.signal(); if (state.pendingRefresh) poll(); } }, "Limpiar selección")));
 }
 
 // Spanish text for the errors the server sends (English keys, see the API contract).
@@ -794,6 +817,11 @@ function errEs(msg) {
   if (/valor must be/.test(m)) return "Estado inválido para este tipo de elemento.";
   if (/cannot be moved alone/.test(m)) return "El archivo principal no se puede mover solo: mové la carpeta entera.";
   if (/path not allowed/.test(m)) return "Esa ruta no está permitida.";
+  if (/only creatives and videos have versions/.test(m)) return "Solo los creativos y los videos tienen versiones para limpiar.";
+  if (/^moved \d+ of \d+ files/.test(m)) {
+    const r = /^moved (\d+) of (\d+) files; failed: (.*)$/.exec(m);
+    return r ? "Se movieron " + r[1] + " de " + r[2] + " archivos. No se pudo mover: " + r[3].replace(/\(not found\)/g, "(ya no está)") : "No se pudieron mover todos los archivos.";
+  }
   if (/^sin conexión$|^acceso vencido$/.test(m)) return m === "sin conexión" ? "La galería se desconectó." : "Esta pestaña perdió el acceso.";
   return "No se pudo (" + m + ").";
 }
@@ -838,8 +866,10 @@ function showResult(def, rows) {
   const ok = rows.filter((r) => r.ok);
   const bad = rows.filter((r) => !r.ok);
   const total = rows.length;
+  const moved = rows.reduce((n, r) => n + (r.movidos || 0), 0);
+  const files = def.tipo === "limpiarVersiones" ? " " + plural(moved, "archivo", "archivos") + " a la papelera." : "";
   const head = !bad.length
-    ? "Listo: " + plural(ok.length, "elemento", "elementos") + " " + (ok.length === 1 ? def.one : def.past) + "."
+    ? "Listo: " + plural(ok.length, "elemento", "elementos") + " " + (ok.length === 1 ? def.one : def.past) + "." + files
     : ok.length
       ? ok.length + " de " + total + " " + def.past + ". Fallaron " + bad.length + "."
       : "No se pudo: fallaron los " + total + (total === 1 ? " (1 elemento)." : " elementos.");
@@ -856,10 +886,46 @@ function showResult(def, rows) {
   if (!bad.length) { clearTimeout(showResult.t); showResult.t = setTimeout(() => { if (!panel.classList.contains("fail")) panel.hidden = true; }, 7000); }
 }
 
-// Runs one action over entries [{ruta, kind, title}] through POST /api/acciones and reports every item.
+// Dry run of "limpiar versiones": asks the server, per item, which files it would move.
+async function previewLimpieza(entries) {
+  const plan = entries.map((e) => ({ entry: e, total: 0 }));
+  await pool(plan.map((p) => async () => {
+    try { p.total = (await api("/api/versiones-antiguas?" + qs({ ruta: p.entry.ruta }))).total; } catch (err) {
+      if (err.status === 0 || err.status === 401) throw err;
+    }
+  }), 6);
+  return plan;
+}
+
+// Runs one action over entries [{ruta, kind, title, status}] through POST /api/acciones and reports every item.
 async function ejecutar(nombre, entries, opts) {
   const def = ACCION[nombre];
   if (state.conn !== "ok" || state.busy || !entries.length) return null;
+  if (nombre === "limpiarVersiones") {
+    const candidates = entries.filter((e) => def.solo.includes(e.kind));
+    let plan = [];
+    state.busy = true;
+    applyConn();
+    try { plan = await previewLimpieza(candidates); } catch (err) {
+      showStatus(errEs(err.message));
+      return null;
+    } finally { state.busy = false; applyConn(); }
+    const withFiles = plan.filter((p) => p.total > 0);
+    const total = withFiles.reduce((n, p) => n + p.total, 0);
+    if (!total && candidates.length) { showStatus("No hay versiones viejas para limpiar."); return null; }
+    if (total) {
+      const yes = await confirmar({
+        titulo: "¿Mover " + plural(total, "archivo", "archivos") + " de versiones viejas a la papelera?",
+        texto: "Se quedan la versión actual, el video final y los prompts. Lo que se mueve no se borra: se restaura desde la Papelera.",
+        items: withFiles.map((p) => (p.entry.title || p.entry.ruta) + " (" + plural(p.total, "archivo", "archivos") + ")"),
+        ok: "Mover " + plural(total, "archivo", "archivos"),
+      });
+      if (!yes) return null;
+    }
+    const keep = new Set(withFiles.map((p) => p.entry.ruta));
+    entries = entries.filter((e) => !def.solo.includes(e.kind) || keep.has(e.ruta));
+    if (!entries.length) return null;
+  }
   if (nombre === "papelera") {
     const yes = await confirmar({
       titulo: "¿Mandar " + plural(entries.length, "elemento", "elementos") + " a la papelera?",
@@ -871,7 +937,7 @@ async function ejecutar(nombre, entries, opts) {
   state.busy = true;
   applyConn();
   const rows = [];
-  const send = entries.filter((e) => !def.solo || def.solo.includes(e.kind));
+  const send = entries.filter((e) => (!def.solo || def.solo.includes(e.kind)) && (!def.cuando || def.cuando(e)));
   for (const e of entries) if (!send.includes(e)) rows.push({ ruta: e.ruta, title: e.title || e.ruta, ok: false, error: def.skip });
   try {
     for (let i = 0; i < send.length; i += 200) {
@@ -883,7 +949,7 @@ async function ejecutar(nombre, entries, opts) {
         });
         chunk.forEach((e, j) => {
           const x = (r.resultados && (r.resultados[j] && r.resultados[j].ruta === e.ruta ? r.resultados[j] : r.resultados.find((y) => y.ruta === e.ruta))) || { ok: false, error: "sin respuesta" };
-          rows.push({ ruta: e.ruta, title: e.title || e.ruta, ok: !!x.ok, error: x.error });
+          rows.push({ ruta: e.ruta, title: e.title || e.ruta, ok: !!x.ok, error: x.error, movidos: x.movidos });
         });
       } catch (err) {
         for (const e of chunk) rows.push({ ruta: e.ruta, title: e.title || e.ruta, ok: false, error: err.message });
@@ -906,14 +972,16 @@ async function ejecutar(nombre, entries, opts) {
 // Actions of a single element (detail views and product header).
 function detailActions(e, alTerminar) {
   const row = h("div", { class: "actions", role: "group", "aria-label": "Acciones" });
-  const entry = [{ ruta: e.path, kind: e.kind, title: e.title }];
+  const entry = [{ ruta: e.path, kind: e.kind, title: e.title, status: e.status }];
   const add = (name, text, cls) => row.append(h("button", { class: "btn " + (cls || ""), type: "button", "data-act": "1",
     disabled: state.conn !== "ok", onclick: () => ejecutar(name, entry, { alTerminar: (rows) => alTerminar(name, rows) }) }, text));
   if (e.kind === "creative") {
     if (e.status !== "approved") add("aprobar", "Aprobar", "primary");
-    if (e.status !== "draft") add("revisar", "Volver a por revisar");
+    if (e.status === "discarded") add("reabrir", "Reabrir");
+    else if (e.status !== "draft") add("revisar", "Volver a por revisar");
     if (e.status !== "discarded") add("descartar", "Descartar");
-  } else if (e.kind === "video" && e.status !== "discarded") add("descartar", "Descartar");
+  } else if (e.kind === "video") add(e.status === "discarded" ? "reabrir" : "descartar", e.status === "discarded" ? "Reabrir" : "Descartar");
+  if (e.kind === "creative" || e.kind === "video") add("limpiarVersiones", "Limpiar versiones viejas");
   add(e.archived ? "desarchivar" : "archivar", e.archived ? "Desarchivar" : "Archivar");
   add("papelera", "Papelera", "danger");
   return row;
@@ -933,13 +1001,20 @@ function picture(path, w, alt) {
   return im;
 }
 
+// "Carrusel · 5 tarjetas" / "Estática · 2 piezas" from the type and piece count the server sends.
+function typeLabel(it) {
+  const n = it.pieces || 0;
+  if (it.type === "carousel") return n ? "Carrusel · " + plural(n, "tarjeta", "tarjetas") : "Carrusel";
+  return n ? "Estática · " + plural(n, "pieza", "piezas") : "Estática";
+}
+
 function itemCard(it, opts) {
   const o = opts || {};
   const selectable = o.selectable !== false && it.kind !== "brand" && it.kind !== "product";
   const on = state.selection.has(it.path);
   const meta = [
-    o.showClient !== false && it.profileId ? clientName(it.profileId) : null,
-    it.kind !== "product" && it.productId && o.showProduct !== false ? it.productId : null,
+    o.showClient !== false && it.profileId ? it.clientName || clientName(it.profileId) : null,
+    it.kind !== "product" && it.productId && o.showProduct !== false ? it.productTitle || it.productId : null,
     it.actorId && it.kind !== "actor" ? actorName(it.actorId) : null,
     fmtDate(it.updatedAt),
   ].filter(Boolean).join(" · ");
@@ -953,7 +1028,8 @@ function itemCard(it, opts) {
       h("div", { class: "card-body" },
         h("div", { class: "pills" },
           it.broken ? h("span", { class: "pill st-broken" }, "Dañado") : (ESTADO[it.status] ? pill(it.status) : null),
-          it.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null),
+          it.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null,
+          it.kind === "creative" && it.type ? h("span", { class: "tag type" }, typeLabel(it)) : null),
         h("h3", {}, it.title || it.path.split("/").pop()),
         meta ? h("p", { class: "meta" }, meta) : null)));
   return card;
@@ -964,7 +1040,8 @@ const grid = (items, opts) => h("div", { class: "grid" }, items.map((it) => item
 // ---------- paginated lists ----------
 
 // A list that loads pages of GET /api/elementos ("Cargar más"), keeps the selection and can refresh
-// the pages already loaded. `query()` returns the query string without the page.
+// the pages already loaded. `query()` returns the query string without the page; every filter,
+// batches included, is applied by the server.
 function makeList(o) {
   const my = gen;
   const c = { items: [], total: 0, pages: 0, busy: false, el: h("div", { class: "section" }) };
@@ -972,13 +1049,13 @@ function makeList(o) {
   const body = h("div");
   const foot = h("div", { class: "list-foot" });
   c.el.append(head, body, foot);
-  const visible = () => (o.keep ? c.items.filter(o.keep) : c.items);
+  const visible = () => c.items;
   const selectable = o.selectable !== false;
 
   function paint() {
     if (my !== gen) return;
     const vis = visible();
-    const total = o.keep ? vis.length : c.total;
+    const total = c.total;
     const picks = vis.filter((i) => i.kind !== "brand" && i.kind !== "product");
     const all = picks.length > 0 && picks.every((i) => state.selection.has(i.path));
     const some = picks.some((i) => state.selection.has(i.path));
@@ -996,10 +1073,10 @@ function makeList(o) {
       selectable && picks.length ? h("label", { class: "checkline" }, box, "Seleccionar todo lo cargado (" + picks.length + ")") : h("span"),
       h("span", { class: "muted num" }, plural(total, "resultado", "resultados")));
     body.replaceChildren(vis.length ? o.render(vis) : (c.busy ? h("p", { class: "skeleton" }, "Cargando…") : o.empty));
-    const more = !o.keep && c.items.length < c.total;
+    const more = c.items.length < c.total;
     fill(foot,
       more ? h("button", { class: "btn", type: "button", onclick: () => c.more() }, "Cargar más") : null,
-      vis.length ? h("p", { class: "foot num" }, o.keep || !more ? "Mostrando todos (" + vis.length + ")" : "Mostrando " + c.items.length + " de " + c.total) : null);
+      vis.length ? h("p", { class: "foot num" }, !more ? "Mostrando todos (" + vis.length + ")" : "Mostrando " + c.items.length + " de " + c.total) : null);
     if (o.onTotal) o.onTotal(total);
   }
 
@@ -1012,14 +1089,11 @@ function makeList(o) {
     const btn = foot.querySelector("button");
     if (btn) { btn.disabled = true; btn.textContent = "Cargando…"; }
     try {
-      let r;
-      do {
-        r = await fetchPage(c.pages + 1);
-        if (my !== gen) return;
-        c.items.push(...r.items);
-        c.total = r.total;
-        c.pages++;
-      } while (o.keep && r.items.length && c.items.length < c.total);
+      const r = await fetchPage(c.pages + 1);
+      if (my !== gen) return;
+      c.items.push(...r.items);
+      c.total = r.total;
+      c.pages++;
     } catch (e) {
       if (my !== gen) return;
       c.busy = false;
@@ -1226,7 +1300,7 @@ async function viewProducto(r, my) {
       h("a", { href: hProduct(c, r.producto, id), "aria-current": tab === id ? "page" : null }, text, h("span", { class: "count" }, String(n)))));
 
   const params = new URLSearchParams(r.params);
-  const lote = r.params.get("lote"); // stays in the hash; the API query ignores it
+  const lote = r.params.get("lote"); // stays in the hash and goes to the server as ?lote=
   const crumbItems = [{ text: "Inicio", href: "#/" }, { text: cname, href: hClient(c) }, { text: ptitle, href: hProduct(c, r.producto) }];
   if (tab === "creativos") crumbItems.push({ text: "Creativos", href: hProduct(c, r.producto, "creativos") });
   else crumbItems.push({ text: tab === "videos" ? "Videos" : "Fotos" });
@@ -1256,9 +1330,7 @@ async function viewProducto(r, my) {
   const path = base + "/" + tab;
   const commit = () => { replaceHash("#" + path + (params.toString() ? "?" + params : "")); list.reload(); };
   const list = makeList({
-    query: () => listQuery({ tipo, cliente: c, producto: r.producto }, params),
-    // The server has no batch filter: with a batch the list reads every page and keeps that batch.
-    keep: tab === "creativos" && lote ? (i) => i.batch === lote : null,
+    query: () => listQuery({ tipo, cliente: c, producto: r.producto }, params, tab === "creativos" ? ["lote"] : []),
     empty: emptyBox(tab === "videos" ? "No hay videos con estos filtros" : "No hay creativos con estos filtros",
       tab === "videos" ? "Pedile a Claude: “Quiero un video para este producto”." : "Pedile a Claude: “Quiero creativos para Meta Ads de este producto”."),
     render: tab === "videos" ? (items) => grid(items, { showClient: false, showProduct: false }) : (items) => creativeGroups(items, c, r.producto),
@@ -1336,6 +1408,9 @@ async function viewPapelera(r, my) {
   const shown = { n: PER_PAGE };
   let entries = [];
   const box = h("div", { class: "section" });
+  const VIEJO_DIAS = 30;
+  const corteViejo = () => new Date(Date.now() - VIEJO_DIAS * 86400000).toISOString();
+  const masViejos = (list, antesDe) => list.filter((e) => Date.parse(e.trashedAt) < Date.parse(antesDe));
   async function load() {
     entries = (await api("/api/papelera")).entries || [];
     if (my !== gen) return;
@@ -1347,10 +1422,17 @@ async function viewPapelera(r, my) {
     const check = h("input", { type: "checkbox", checked: all, "aria-label": "Seleccionar todo lo que está en pantalla",
       onchange: (ev) => { for (const e of vis) toggleSel(rowItem(e), ev.target.checked); paint(); } });
     state.signal = () => { check.checked = vis.length > 0 && vis.every((e) => state.selection.has(e.id)); check.indeterminate = !check.checked && vis.some((e) => state.selection.has(e.id)); };
+    const nViejos = masViejos(entries, corteViejo()).length;
+    const tool = (text, count, onclick) => h("button", { class: "btn danger", type: "button", "data-act": "1", "data-na": count ? null : "1",
+      disabled: state.conn !== "ok" || state.busy || !count, onclick }, text);
     fill(box,
+      entries.length ? h("div", { class: "trash-tools", role: "group", "aria-label": "Vaciar la papelera" },
+        tool("Vaciar papelera", entries.length, () => vaciar(false)),
+        tool("Vaciar lo de más de " + VIEJO_DIAS + " días", nViejos, () => vaciar(true)),
+        h("span", { class: "muted num" }, plural(nViejos, "elemento", "elementos") + " con más de " + VIEJO_DIAS + " días")) : null,
       h("div", { class: "list-head" },
         vis.length ? h("label", { class: "checkline" }, check, "Seleccionar todo lo cargado (" + vis.length + ")") : h("span"),
-        h("span", { class: "muted num" }, plural(entries.length, "elemento", "elementos"))),
+        h("span", { class: "muted num" }, plural(entries.length, "elemento", "elementos") + " en la papelera")),
       vis.length ? h("div", { class: "rows" }, vis.map(trashRow)) : emptyBox("La papelera está vacía", "Lo que mandes a la papelera aparece acá y se puede restaurar."),
       entries.length > vis.length ? h("div", { class: "list-foot" },
         h("button", { class: "btn", type: "button", onclick: () => { shown.n += PER_PAGE; paint(); } }, "Cargar más"),
@@ -1358,6 +1440,39 @@ async function viewPapelera(r, my) {
   }
   const rowItem = (e) => ({ key: e.id, kind: "trash", title: nameOf(e), status: null, archived: false });
   const nameOf = (e) => (e.originalPath || e.id).split("/").filter(Boolean).pop();
+
+  // Empties the trash for good (everything, or what is older than 30 days) through
+  // POST /api/papelera/vaciar, after a confirmation that names how many items go.
+  async function vaciar(soloViejos) {
+    if (state.conn !== "ok" || state.busy) return;
+    let fresh;
+    try { fresh = (await api("/api/papelera")).entries || []; } catch (err) { showStatus(errEs(err.message)); return; }
+    const antesDe = soloViejos ? corteViejo() : null;
+    const target = antesDe ? masViejos(fresh, antesDe) : fresh;
+    if (!target.length) {
+      showStatus(soloViejos ? "No hay nada con más de " + VIEJO_DIAS + " días en la papelera." : "La papelera ya está vacía.");
+      entries = fresh;
+      if (my === gen) paint();
+      return;
+    }
+    const n = target.length;
+    const yes = await confirmar({
+      titulo: soloViejos ? "¿Vaciar lo de más de " + VIEJO_DIAS + " días?" : "¿Vaciar la papelera?",
+      texto: "Se van a eliminar para siempre " + plural(n, "elemento", "elementos") + (soloViejos ? " que llevan más de " + VIEJO_DIAS + " días en la papelera" : "") + ". Esto no se puede deshacer.",
+      items: target.map(nameOf), ok: "Eliminar " + plural(n, "elemento", "elementos"),
+    });
+    if (!yes) return;
+    state.busy = true;
+    applyConn();
+    try {
+      const r = await api("/api/papelera/vaciar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(antesDe ? { antesDe } : {}) });
+      showStatus("Se eliminaron " + plural(r.eliminados, "elemento", "elementos") + " de la papelera.");
+    } catch (err) { showStatus(errEs(err.message)); } finally { state.busy = false; applyConn(); }
+    try { await loadEstudio(); } catch (e) { /* banner */ }
+    try { await load(); } catch (e) { return; }
+    for (const id of [...state.selection.keys()]) if (!entries.some((e) => e.id === id)) state.selection.delete(id);
+    renderBar();
+  }
   function trashRow(e) {
     const on = state.selection.has(e.id);
     const row = h("div", { class: "row" + (on ? " selected" : "") },
@@ -1396,15 +1511,12 @@ async function viewElemento(r, my) {
   const crumbList = [{ text: "Inicio", href: "#/" }];
   let back = "#/";
   if (e.kind === "actor") { crumbList.push({ text: "Actores", href: "#/actores" }); back = "#/actores"; } else {
-    const prod = await getProducto(e.profileId, e.productId);
-    if (my !== gen) return;
     const tab = e.kind === "video" ? "videos" : "creativos";
-    crumbList.push({ text: clientName(e.profileId), href: hClient(e.profileId) },
-      { text: (prod && prod.title) || e.productId, href: hProduct(e.profileId, e.productId) },
+    crumbList.push({ text: e.clientName || clientName(e.profileId), href: hClient(e.profileId) },
+      { text: e.productTitle || e.productId, href: hProduct(e.profileId, e.productId) },
       { text: e.kind === "video" ? "Videos" : "Creativos", href: hProduct(e.profileId, e.productId, tab) });
     back = hProduct(e.profileId, e.productId, tab);
     if (e.kind === "creative" && e.batch) crumbList.push({ text: "Lote " + (fmtBatchDay(e.batch) || e.batch), href: hProduct(e.profileId, e.productId, "creativos", new URLSearchParams({ lote: e.batch })) });
-    e.productTitle = prod ? prod.title : null;
   }
   crumbList.push({ text: e.title || parts[parts.length - 1] });
   title(e.title);
@@ -1514,7 +1626,7 @@ function videoDetail(e, after) {
         detailActions(e, after),
         h("div", { class: "links" }, exportButton("Exportar este video", exportRequest("video", vtitle, e.path), "Exportar este video: " + vtitle)),
         h("div", { class: "facts" },
-          fact("Producto", e.productId, true),
+          fact("Producto", e.productTitle || e.productId, true),
           e.actorId ? h("div", { class: "fact" }, h("span", { class: "label" }, "Actor"), h("a", { href: hItem("actores/" + e.actorId) }, actorName(e.actorId))) : null,
           fact("Duración", j.durationSec ? j.durationSec + " s" : null),
           fact("Créditos", fmtCredits(j.credits)),

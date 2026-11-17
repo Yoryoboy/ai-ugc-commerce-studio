@@ -712,6 +712,7 @@ describe("API", () => {
       kind: "creative", path: C1, title: "Agacharse ya no duele", status: "draft", archived: false, broken: false,
       profileId: "acme", productId: "MLA1", batch: "lote-1", actorId: "ana-v1", updatedAt: "2026-01-02T12:00:00Z",
       cover: `${C1}/4x5-v2.png`, coverThumb: `/miniatura/${C1}/4x5-v2.png?w=480`,
+      productTitle: "Ñandú de madera", clientName: "Acme SRL", type: "static", pieces: 1,
     });
     const v = (await getJson(srv, "/api/elementos?tipo=video")).items[0];
     assert.equal(v.cover, `${V1}/thumb-v1.jpg`);
@@ -819,6 +820,248 @@ describe("API", () => {
     assert.equal(d.pagina, 1);
     assert.equal((await getJson(srv, "/api/elementos?pagina=0&porPagina=-3")).pagina, 1);
     assert.ok((await getJson(srv, "/api/elementos?porPagina=100000")).porPagina <= 200);
+  });
+});
+
+// ---------- T3: richer items, credits used, batch filter, cleaning old versions ----------
+
+describe("T3 API fields and filters", () => {
+  test("items carry productTitle, clientName, type and pieces (creatives: static|carousel, slots with a current file)", async () => {
+    const s = estudioRico();
+    const K = "clientes/acme/MLA1/creativos/2026-01-05-x-carrusel";
+    write(s, `${K}/creativo.json`, {
+      id: "2026-01-05-x-carrusel", batch: "lote-3", title: "Carrusel de pasos", type: "carousel", status: "draft",
+      slots: ["tarjeta-1", "tarjeta-2", "tarjeta-3"], updatedAt: "2026-01-05T12:00:00Z",
+    });
+    write(s, `${K}/tarjeta-1-v1.png`, PNG);
+    write(s, `${K}/tarjeta-2-v1.png`, PNG);
+    write(s, `${K}/tarjeta-2-v2.png`, PNG);
+    const srv = await iniciar(s);
+    const por = async (qs) => Object.fromEntries((await getJson(srv, "/api/elementos?archivados=1&" + qs)).items.map((i) => [i.path.split("/").pop(), i]));
+    const cr = await por("tipo=creative");
+    assert.equal(cr["2026-01-05-x-carrusel"].type, "carousel");
+    assert.equal(cr["2026-01-05-x-carrusel"].pieces, 2, "tarjeta-3 has no image yet");
+    assert.equal(cr["2026-01-02-x-dolor"].type, "static");
+    assert.equal(cr["2026-01-02-x-dolor"].pieces, 1);
+    assert.equal(cr["2026-01-03-x-precio"].productTitle, "Ñandú de madera");
+    assert.equal(cr["2026-01-03-x-precio"].clientName, "Acme SRL");
+    const v = (await por("tipo=video"))["2026-01-01-cama-problema"];
+    assert.deepEqual([v.productTitle, v.clientName, v.type, v.pieces], ["Ñandú de madera", "Acme SRL", null, null]);
+    const p = (await por("tipo=product&cliente=beta")).MLB2;
+    assert.deepEqual([p.productTitle, p.clientName, p.type, p.pieces], ["Lámpara de pie", "Beta Hogar", null, null]);
+    const a = (await por("tipo=actor")) ["ana-v1"];
+    assert.deepEqual([a.productTitle, a.clientName, a.type, a.pieces], [null, null, null, null]);
+    // The detail view carries them too, and the names follow a rename without a restart.
+    const el = await getJson(srv, "/api/elemento?ruta=" + encodeURIComponent(C1));
+    assert.deepEqual([el.productTitle, el.clientName, el.type, el.pieces.length], ["Ñandú de madera", "Acme SRL", "static", 1]);
+  });
+
+  test("a renamed product shows its new title on its items (the view is rebuilt)", async () => {
+    const s = estudioRico();
+    const srv = await iniciar(s);
+    await getJson(srv, "/api/elementos");
+    const f = path.join(s, "clientes/acme/MLA1/producto.json");
+    const j = JSON.parse(fs.readFileSync(f, "utf8"));
+    j.title = "Nombre nuevo";
+    fs.writeFileSync(f, JSON.stringify(j));
+    await esperar(async () => (await getJson(srv, "/api/elementos?tipo=creative")).items.every((i) => i.productTitle === "Nombre nuevo"));
+  });
+
+  test("/api/estudio creditsUsed sums credits of actors, videos and creatives (archived ones too); products and brands do not count", async () => {
+    const s = estudioRico();
+    const edit = (rel, f) => { const j = leer(s, rel); f(j); fs.writeFileSync(path.join(s, rel), JSON.stringify(j, null, 2)); };
+    edit("actores/ana-v1/actor.json", (j) => { j.credits = 13.75; });
+    edit(`${V1}/video.json`, (j) => { j.credits = 56; });
+    edit(`${C3}/creativo.json`, (j) => { j.credits = 1.1; });
+    edit("clientes/acme/MLA1/producto.json", (j) => { j.credits = 1000; });
+    edit("clientes/acme/marca/marca.json", (j) => { j.credits = 1000; });
+    edit(`${C2}/creativo.json`, (j) => { j.credits = "mucho"; });
+    const srv = await iniciar(s);
+    // C1 has 5.5, C3 (archived) 1.1, C2 a non-number: 13.75 + 56 + 5.5 + 1.1
+    assert.equal((await getJson(srv, "/api/estudio")).creditsUsed, 76.35);
+    const vacio = await iniciar(estudioBasico());
+    assert.equal((await getJson(vacio, "/api/estudio")).creditsUsed, 0);
+  });
+
+  test("/api/estudio trashCount is the number of entries in the trash", async () => {
+    const srv = await iniciar(estudioRico());
+    assert.equal((await getJson(srv, "/api/estudio")).trashCount, 0);
+    await accion(srv, [{ tipo: "papelera", ruta: C1 }, { tipo: "papelera", ruta: C2 }]);
+    assert.equal((await getJson(srv, "/api/estudio")).trashCount, 2);
+  });
+
+  test("lote filters by batch id (exact), together with the other filters; without it nothing changes", async () => {
+    const srv = await iniciar(estudioRico());
+    const paths = async (qs) => (await getJson(srv, "/api/elementos?" + qs)).items.map((i) => i.path.split("/").pop());
+    assert.deepEqual(await paths("tipo=creative&lote=lote-1"), ["2026-01-02-x-dolor"]);
+    assert.deepEqual(await paths("tipo=creative&lote=lote-2"), ["2026-01-03-x-precio"], "archived hidden by default");
+    assert.deepEqual((await paths("tipo=creative&lote=lote-2&archivados=1")).sort(), ["2026-01-03-x-precio", "2026-01-04-x-viejo"]);
+    assert.deepEqual(await paths("tipo=creative&lote=lote-"), [], "exact match, not a prefix");
+    assert.deepEqual(await paths("tipo=creative&lote=nada"), []);
+    assert.deepEqual(await paths("tipo=creative&lote=lote-2&estado=draft&archivados=1"), ["2026-01-04-x-viejo"]);
+    assert.deepEqual(await paths("lote=lote-1"), ["2026-01-02-x-dolor"], "other kinds have no batch");
+    const total = (await getJson(srv, "/api/elementos?lote=lote-1")).total;
+    assert.equal(total, 1, "total follows the filter");
+    assert.equal((await getJson(srv, "/api/elementos?tipo=creative")).total, 2);
+    assert.equal((await getJson(srv, "/api/elementos?tipo=creative&lote=")).total, 2, "an empty lote is no filter");
+  });
+});
+
+describe("limpiarVersiones", () => {
+  const DRY = (ruta) => "/api/versiones-antiguas?ruta=" + encodeURIComponent(ruta);
+
+  // V1 with three versions, final.mp4, prompts and a scene; C1 with versions in two slots.
+  function estudioConVersiones() {
+    const s = estudioRico();
+    const j = leer(s, `${V1}/video.json`);
+    j.versions = [{ n: 1 }, { n: 2 }, { n: 3 }];
+    write(s, `${V1}/video.json`, j);
+    for (const n of [2, 3]) { write(s, `${V1}/borrador-v${n}.mp4`, "video " + n); write(s, `${V1}/thumb-v${n}.jpg`, PNG); }
+    write(s, `${V1}/final.mp4`, "final");
+    write(s, `${V1}/prompt-v1.md`, "p1");
+    write(s, `${V1}/prompt-v3.md`, "p3");
+    write(s, `${V1}/escena-1.png`, PNG);
+    const c = leer(s, `${C1}/creativo.json`);
+    c.slots = ["4x5", "9x16"];
+    write(s, `${C1}/creativo.json`, c);
+    for (const f of ["4x5-base-v1.png", "4x5-base-v2.png", "4x5-diseno-v1.html", "4x5-diseno-v2.html", "9x16-v1.png", "9x16-v2.png", "9x16-v3.png", "prompt-v1.md", "prompt-v2.md"]) {
+      write(s, `${C1}/${f}`, "x");
+    }
+    return s;
+  }
+  const lista = (s, rel) => fs.readdirSync(path.join(s, rel)).sort();
+
+  test("dry run (GET) lists the files that would move and moves nothing", async () => {
+    const s = estudioConVersiones();
+    const srv = await iniciar(s);
+    const antesV = lista(s, V1);
+    const antesC = lista(s, C1);
+    const v = await getJson(srv, DRY(V1));
+    assert.deepEqual(v, {
+      ruta: V1, total: 4,
+      files: ["borrador-v1.mp4", "borrador-v2.mp4", "thumb-v1.jpg", "thumb-v2.jpg"].map((f) => `${V1}/${f}`),
+    });
+    const c = await getJson(srv, DRY(C1));
+    assert.equal(c.total, 5);
+    assert.deepEqual(c.files, ["4x5-base-v1.png", "4x5-diseno-v1.html", "4x5-v1.png", "9x16-v1.png", "9x16-v2.png"].map((f) => `${C1}/${f}`).sort());
+    assert.deepEqual(lista(s, V1), antesV);
+    assert.deepEqual(lista(s, C1), antesC);
+    assert.ok(!fs.existsSync(path.join(s, ".papelera")), "no trash entry for a dry run");
+    assert.deepEqual(await getJson(srv, DRY(C2)), { ruta: C2, total: 0, files: [] });
+  });
+
+  test("dry run errors: not an item (404), not a creative or video (400), bad path (400), no token (401), POST not allowed", async () => {
+    const srv = await iniciar(estudioConVersiones());
+    assert.equal((await req(srv, { path: DRY("clientes/acme/nada") })).status, 404);
+    assert.equal((await req(srv, { path: DRY("actores/ana-v1") })).status, 400);
+    assert.equal((await req(srv, { path: DRY("clientes/acme/MLA1") })).status, 400);
+    assert.equal((await req(srv, { path: DRY("../etc") })).status, 400);
+    assert.equal((await req(srv, { path: DRY("/etc") })).status, 400);
+    assert.equal((await req(srv, { path: "/api/versiones-antiguas" })).status, 400);
+    assert.equal((await req(srv, { path: DRY(V1), auth: false })).status, 401);
+    const post = await req(srv, { method: "POST", path: DRY(V1), headers: { "Content-Type": "application/json" }, body: "{}" });
+    assert.equal(post.status, 404, "like any other GET-only route");
+  });
+
+  test("a video keeps its last version, final.mp4, prompts and scenes; the old drafts and thumbs go to the trash", async () => {
+    const s = estudioConVersiones();
+    const srv = await iniciar(s);
+    const [r] = await accion(srv, [{ tipo: "limpiarVersiones", ruta: V1 }]);
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.equal(r.ruta, V1);
+    assert.equal(r.movidos, 4);
+    assert.equal(r.ids.length, 4);
+    assert.deepEqual(lista(s, V1), ["borrador-v3.mp4", "escena-1.png", "final.mp4", "prompt-v1.md", "prompt-v3.md", "thumb-v3.jpg", "video.json"]);
+    const entries = (await getJson(srv, "/api/papelera")).entries;
+    assert.equal(entries.length, 4);
+    assert.deepEqual(entries.map((e) => e.originalPath).sort(), ["borrador-v1.mp4", "borrador-v2.mp4", "thumb-v1.jpg", "thumb-v2.jpg"].map((f) => `${V1}/${f}`));
+    assert.ok(entries.every((e) => e.kind === "file" && r.ids.includes(e.id)));
+    const el = await getJson(srv, "/api/elemento?ruta=" + encodeURIComponent(V1));
+    assert.equal(el.current.video, `${V1}/borrador-v3.mp4`);
+    assert.equal(el.finalVideo, `${V1}/final.mp4`);
+    assert.equal(el.cover, `${V1}/thumb-v3.jpg`);
+    assert.equal(leer(s, `${V1}/video.json`).versions.length, 3, "video.json is not touched");
+    // Cleaning again finds nothing and adds no trash entries.
+    const [again] = await accion(srv, [{ tipo: "limpiarVersiones", ruta: V1 }]);
+    assert.deepEqual(again, { ruta: V1, ok: true, movidos: 0, ids: [] });
+    assert.equal((await getJson(srv, "/api/papelera")).entries.length, 4);
+  });
+
+  test("a creative keeps the highest N per slot (piece, base and design) and the prompts; restaurar brings every file back", async () => {
+    const s = estudioConVersiones();
+    const srv = await iniciar(s);
+    const antes = lista(s, C1);
+    const contenido = Object.fromEntries(antes.map((f) => [f, fs.readFileSync(path.join(s, C1, f))]));
+    const [r] = await accion(srv, [{ tipo: "limpiarVersiones", ruta: C1 }]);
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.equal(r.movidos, 5);
+    assert.deepEqual(lista(s, C1), ["4x5-base-v2.png", "4x5-diseno-v2.html", "4x5-v2.png", "9x16-v3.png", "creativo.json", "prompt-v1.md", "prompt-v2.md"]);
+    const el = await getJson(srv, "/api/elemento?ruta=" + encodeURIComponent(C1));
+    assert.deepEqual(el.pieces.map((p) => [p.slot, p.current.n, p.older.length]), [["4x5", 2, 0], ["9x16", 3, 0]]);
+    // The entries are the ordinary trash entries: papelera.json with the original path.
+    const ids = r.ids;
+    for (const id of ids) {
+      const meta = leer(s, `.papelera/${id}/papelera.json`);
+      assert.equal(meta.id, id);
+      assert.equal(meta.kind, "file");
+      assert.match(meta.trashedAt, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
+      assert.ok(fs.existsSync(path.join(s, ".papelera", id, meta.originalPath)));
+    }
+    const back = await accion(srv, ids.map((id) => ({ tipo: "restaurar", ruta: id })));
+    assert.ok(back.every((x) => x.ok), JSON.stringify(back));
+    assert.deepEqual(lista(s, C1), antes);
+    for (const f of antes) assert.deepEqual(fs.readFileSync(path.join(s, C1, f)), contenido[f], f);
+    assert.equal((await getJson(srv, "/api/papelera")).entries.length, 0);
+    const el2 = await getJson(srv, "/api/elemento?ruta=" + encodeURIComponent(C1));
+    assert.equal(el2.pieces.find((p) => p.slot === "9x16").older.length, 2);
+  });
+
+  test("never moves what could be current: a base newer than the finished piece, a slot with only bases, a version missing from disk", async () => {
+    const s = estudioRico();
+    write(s, `${C1}/1x1-v1.png`, PNG);
+    write(s, `${C1}/1x1-base-v2.png`, PNG); // composing version 2 is still pending
+    write(s, `${C1}/tarjeta-1-base-v1.png`, PNG);
+    write(s, `${C1}/tarjeta-1-base-v2.png`, PNG);
+    const j = leer(s, `${V1}/video.json`);
+    j.versions = [{ n: 1 }, { n: 2 }, { n: 3 }]; // version 3 has no file yet
+    write(s, `${V1}/video.json`, j);
+    write(s, `${V1}/borrador-v2.mp4`, "v2");
+    const srv = await iniciar(s);
+    const c = await getJson(srv, DRY(C1));
+    assert.deepEqual(c.files, [`${C1}/4x5-v1.png`, `${C1}/tarjeta-1-base-v1.png`].sort(), "only the 4x5 v1 and the old base");
+    const v = await getJson(srv, DRY(V1));
+    assert.deepEqual(v.files, [`${V1}/borrador-v1.mp4`, `${V1}/thumb-v1.jpg`], "version 2 is the newest on disk: kept even though the last entry says 3");
+  });
+
+  test("it applies to creatives and videos only, and fails per item without stopping the batch", async () => {
+    const s = estudioConVersiones();
+    const srv = await iniciar(s);
+    const res = await accion(srv, [
+      { tipo: "limpiarVersiones", ruta: "actores/ana-v1" },
+      { tipo: "limpiarVersiones", ruta: "clientes/acme/MLA1" },
+      { tipo: "limpiarVersiones", ruta: "clientes/acme/nada/x" },
+      { tipo: "limpiarVersiones", ruta: "../fuera" },
+      { tipo: "limpiarVersiones", ruta: V1 },
+      { tipo: "limpiarVersiones", ruta: C2 },
+    ]);
+    assert.deepEqual(res.map((x) => x.ok), [false, false, false, false, true, true]);
+    assert.ok(res.slice(0, 4).every((x) => x.error));
+    assert.equal(res[4].movidos, 4);
+    assert.equal(res[5].movidos, 0);
+    assert.ok(fs.existsSync(path.join(s, "actores/ana-v1/actor.json")));
+  });
+
+  test("a file that is gone from disk fails alone, the others still go, and the failure says how many moved", async () => {
+    const s = estudioConVersiones();
+    const srv = await iniciar(s, { watch: false }); // the index still lists the file that is removed next
+    fs.rmSync(path.join(s, V1, "thumb-v1.jpg"));
+    const [r] = await accion(srv, [{ tipo: "limpiarVersiones", ruta: V1 }]);
+    assert.equal(r.ok, false);
+    assert.equal(r.movidos, 3);
+    assert.equal(r.ids.length, 3);
+    assert.match(r.error, /moved 3 of 4 files; failed: thumb-v1\.jpg \(not found\)/);
+    assert.deepEqual(lista(s, V1), ["borrador-v3.mp4", "escena-1.png", "final.mp4", "prompt-v1.md", "prompt-v3.md", "thumb-v3.jpg", "video.json"]);
+    assert.equal((await getJson(srv, "/api/papelera")).entries.length, 3);
   });
 });
 
@@ -1022,8 +1265,10 @@ describe("health and slow start", () => {
   test("a change made while the index is not ready is picked up once it is", async () => {
     const s = estudioRico();
     const srv = await iniciar(s, { scanDelayMs: 500, sinEsperar: true, watch: false, checkMs: 100 });
-    await srv.listo;
+    // Written while the index is not ready (the scan has not started): it is in the index once ready.
+    assert.equal((await req(srv, { path: "/api/salud", auth: false })).json().listo, false);
     write(s, "clientes/acme/MLA1/creativos/2026-03-09-x-tarde/creativo.json", { id: "2026-03-09-x-tarde", title: "Tarde", status: "draft" });
+    await srv.listo;
     await esperar(async () => (await getJson(srv, "/api/elementos?q=tarde")).total === 1);
   });
 
