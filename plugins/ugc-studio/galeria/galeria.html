@@ -78,6 +78,7 @@ a.card:hover { border-color: var(--accent); }
 .st-draft { background: var(--warn-soft); color: var(--warn); }
 .st-final { background: var(--ok-soft); color: var(--ok); }
 .st-discarded { background: var(--off-soft); color: var(--off); }
+.st-approved { background: var(--ok-soft); color: var(--ok); }
 .st-broken { background: var(--bad-soft); color: var(--bad); }
 
 .detail { display: grid; gap: 20px; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); align-items: start; }
@@ -95,7 +96,32 @@ a.card:hover { border-color: var(--accent); }
 .scenes img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: var(--sunken); }
 .back { justify-self: start; }
 
-.actor .media { aspect-ratio: 4 / 5; }
+.actor .media, .creative .media { aspect-ratio: 4 / 5; }
+.subgroup { display: grid; gap: 10px; }
+.subhead { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; }
+.pieces { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; }
+.piece { flex: 0 0 auto; display: grid; gap: 6px; width: min(300px, 78vw); }
+.piece.r9x16 { width: min(225px, 60vw); }
+@media (max-width: 560px) { .pieces.static { gap: 12px; } .pieces.static .piece { width: 50vw; } .pieces.static .piece.r9x16 { width: 33vw; } }
+.cols .fact { align-content: start; }
+.piece .shot { display: block; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--sunken); }
+.piece .shot img { width: 100%; display: block; aspect-ratio: 4 / 5; object-fit: cover; }
+.piece.r9x16 .shot img { aspect-ratio: 9 / 16; }
+.piece.r1x1 .shot img { aspect-ratio: 1 / 1; }
+.piece .placeholder { aspect-ratio: 4 / 5; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--muted); font-size: 0.85rem; }
+.piece.r9x16 .placeholder { aspect-ratio: 9 / 16; }
+.olds { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); }
+.olds a { display: grid; gap: 2px; justify-items: center; text-decoration: none; color: var(--muted); }
+.olds img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: var(--sunken); }
+.cols { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 760px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.copyrow { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
+.copyrow p { overflow-wrap: anywhere; }
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatch { display: grid; gap: 4px; justify-items: start; font-size: 0.8rem; }
+.swatch i { display: block; width: 64px; height: 40px; border-radius: 8px; border: 1px solid var(--line); }
+.logo-box { justify-self: start; background: #ffffff; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.logo-box img { display: block; max-width: 160px; max-height: 56px; }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag { font-size: 0.75rem; background: var(--sunken); border-radius: 6px; padding: 2px 8px; }
 .tag.no { text-decoration: line-through; color: var(--muted); }
@@ -145,11 +171,14 @@ const STATUS = {
   final: "Final",
   discarded: "Descartado",
 };
+const CREATIVE_STATUS = { draft: "Por revisar", approved: "Aprobado", discarded: "Descartado" };
+const SLOT_ORDER = ["4x5", "9x16", "1x1"];
 const PLATFORM = { mercadolibre: "Mercado Libre", vtex: "VTEX", tiendanube: "Tiendanube" };
 
 let model = null;
 let lastBuild = null;
 let videoFilter = "all";
+let creativeFilter = "all";
 
 // ---------- helpers ----------
 
@@ -187,6 +216,14 @@ function fmtDate(iso) {
   const d = new Date(iso);
   if (isNaN(d)) return "";
   return d.toLocaleString("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+// "2026-11-16-patas-cama" -> "16 nov" (the batch id starts with its day).
+function fmtBatchDay(batch) {
+  const r = /^(\d{4}-\d{2}-\d{2})/.exec(String(batch || ""));
+  const d = r ? new Date(r[1] + "T00:00:00Z") : null;
+  if (!d || isNaN(d)) return "";
+  return d.toLocaleDateString("es-AR", { day: "numeric", month: "short", timeZone: "UTC" });
 }
 
 function fmtPrice(p) {
@@ -244,12 +281,12 @@ function showStatus(text) {
 }
 
 // Last resort: show the request selected so the user can copy it by hand.
-function showManualCopy(text) {
+function showManualCopy(text, label, intro) {
   clearTimeout(statusTimer);
   document.getElementById("estado").textContent = "";
   const panel = document.getElementById("manual");
   const previous = document.activeElement;
-  const field = h("textarea", { readonly: true, "aria-label": "Pedido para Claude" });
+  const field = h("textarea", { readonly: true, "aria-label": label || "Pedido para Claude" });
   field.value = text;
   const close = () => {
     panel.hidden = true;
@@ -260,7 +297,7 @@ function showManualCopy(text) {
   const onKey = (e) => { if (e.key === "Escape") close(); };
   panel.replaceChildren(h("div", { class: "manual-box" },
     h("h2", { id: "manual-titulo" }, "Copialo a mano"),
-    h("p", { class: "muted" }, "No pude copiarlo solo. Seleccioná el texto, copialo y pegalo en el chat de Claude para exportar."),
+    h("p", { class: "muted" }, intro || "No pude copiarlo solo. Seleccioná el texto, copialo y pegalo en el chat de Claude para exportar."),
     field,
     h("div", { class: "links" }, h("button", { class: "chip", type: "button", onclick: close }, "Cerrar"))));
   panel.hidden = false;
@@ -274,11 +311,38 @@ async function copyRequest(text) {
   else showManualCopy(text);
 }
 
+// Copies a piece of ad copy; falls back to the manual panel like the export requests.
+async function copyText(text, what) {
+  if (await writeClipboard(text)) showStatus("Copiado: " + what + ".");
+  else showManualCopy(text, what, "No pude copiarlo solo. Seleccioná el texto y copialo a mano.");
+}
+
 // ---------- model ----------
+
+// Slots of a creative: carousels take the cards found in the files, statics the ones in creativo.json.
+function creativeSlots(data, files) {
+  const listed = (Array.isArray(data.slots) ? data.slots : []).filter((s) => typeof s === "string" && /^[a-z0-9-]+$/i.test(s));
+  const found = new Set();
+  if (data.type === "carousel") {
+    listed.filter((s) => /^tarjeta-\d+$/.test(s)).forEach((s) => found.add(s));
+    for (const f of files) { const r = /^(tarjeta-\d+)-v\d+\.png$/.exec(f); if (r) found.add(r[1]); }
+    return [...found].sort((a, b) => Number(a.slice(8)) - Number(b.slice(8)));
+  }
+  if (listed.length) return listed;
+  for (const f of files) { const r = /^(\d+x\d+)-v\d+\.png$/.exec(f); if (r) found.add(r[1]); }
+  const rank = (s) => (SLOT_ORDER.includes(s) ? SLOT_ORDER.indexOf(s) : SLOT_ORDER.length);
+  return [...found].sort((a, b) => rank(a) - rank(b));
+}
+
+function slotLabel(slot) {
+  const card = /^tarjeta-(\d+)$/.exec(slot);
+  if (card) return "Tarjeta " + card[1];
+  return slot.replace("x", ":");
+}
 
 // Turns the raw index into actors, products and videos with their file names resolved.
 function buildModel(raw) {
-  const m = { generatedAt: raw.generatedAt, studio: {}, actors: [], products: [], videos: [], broken: [] };
+  const m = { generatedAt: raw.generatedAt, studio: {}, actors: [], products: [], videos: [], creatives: [], brands: [], broken: [] };
   try { m.studio = JSON.parse(raw.studio); } catch (e) { m.broken.push({ path: "studio.json", error: e.message }); }
 
   for (const ent of raw.entities || []) {
@@ -297,6 +361,30 @@ function buildModel(raw) {
       const cover = (data.cover && files.has(data.cover) && data.cover) || photos[0] || null;
       m.products.push({ ...data, profileId: data.profileId || profileId, productId: data.productId || productId,
         path: ent.path, cover: cover ? ent.path + "/" + cover : null });
+    } else if (ent.kind === "brand") {
+      const logo = typeof data.logo === "string" && files.has(data.logo) ? ent.path + "/" + data.logo : null;
+      m.brands.push({ ...data, profileId: ent.path.split("/")[1], path: ent.path, logoFile: logo });
+    } else if (ent.kind === "creative") {
+      const parts = ent.path.split("/");
+      const pieces = creativeSlots(data, files).map((slot) => {
+        const re = new RegExp("^" + slot + "-v(\\d+)\\.png$");
+        const versions = [...files].map((f) => re.exec(f)).filter(Boolean)
+          .map((r) => ({ n: Number(r[1]), src: ent.path + "/" + r[0] })).sort((a, b) => b.n - a.n);
+        return { slot, label: slotLabel(slot), current: versions[0] || null, older: versions.slice(1) };
+      });
+      const topN = Math.max(0, ...pieces.map((p) => (p.current ? p.current.n : 0)));
+      m.creatives.push({
+        ...data,
+        id: data.id || parts[parts.length - 1],
+        path: ent.path,
+        productPath: parts.slice(0, 3).join("/"),
+        profileId: parts[1],
+        productId: parts[2],
+        type: data.type === "carousel" ? "carousel" : "static",
+        pieces,
+        versionCount: (Array.isArray(data.versions) && data.versions.length) || topN,
+        cover: (pieces[0] && pieces[0].current && pieces[0].current.src) || null,
+      });
     } else if (ent.kind === "video") {
       const parts = ent.path.split("/");
       const scenes = [...files]
@@ -330,6 +418,13 @@ function buildModel(raw) {
     v.actor = actors.get(v.actorId) || null;
     v.cover = (v.current && v.current.thumb) || (v.scenes[0] && v.scenes[0].src) || null;
   }
+  const brands = new Map(m.brands.map((b) => [b.profileId, b]));
+  for (const c of m.creatives) {
+    c.product = byPath.get(c.productPath) || null;
+    c.actor = c.actorId ? actors.get(c.actorId) || null : null;
+    c.brand = brands.get(c.profileId) || null;
+  }
+  m.creatives.sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
   m.videos.sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
   m.actors.sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id), "es"));
   m.products.sort((a, b) => String(a.title || a.path).localeCompare(String(b.title || b.path), "es"));
@@ -340,8 +435,10 @@ function buildModel(raw) {
 
 function header(m) {
   const spent = m.videos.reduce((s, v) => s + (Number(v.credits) || 0), 0)
-    + m.actors.reduce((s, a) => s + (Number(a.credits) || 0), 0);
-  const review = m.videos.filter((v) => v.status === "storyboard" || v.status === "draft").length;
+    + m.actors.reduce((s, a) => s + (Number(a.credits) || 0), 0)
+    + m.creatives.reduce((s, c) => s + (Number(c.credits) || 0), 0);
+  const review = m.videos.filter((v) => v.status === "storyboard" || v.status === "draft").length
+    + m.creatives.filter((c) => c.status === "draft").length;
   const credits = m.studio.credits || {};
   return h("header", { class: "top" },
     h("div", { class: "top-head" },
@@ -357,15 +454,19 @@ function header(m) {
       h("div", { class: "tile" },
         h("span", { class: "label" }, "Créditos usados"),
         h("span", { class: "value" }, fmtCredits(spent)),
-        h("span", { class: "sub" }, "En actores y videos")),
+        h("span", { class: "sub" }, "En actores, videos y creativos")),
       h("div", { class: "tile" },
         h("span", { class: "label" }, "Videos"),
         h("span", { class: "value" }, String(m.videos.length)),
         h("span", { class: "sub" }, plural(m.videos.filter((v) => v.status === "final").length, "final", "finales"))),
       h("div", { class: "tile" },
+        h("span", { class: "label" }, "Creativos"),
+        h("span", { class: "value" }, String(m.creatives.length)),
+        h("span", { class: "sub" }, plural(m.creatives.filter((c) => c.status === "approved").length, "aprobado", "aprobados"))),
+      h("div", { class: "tile" },
         h("span", { class: "label" }, "Por revisar"),
         h("span", { class: "value" }, String(review)),
-        h("span", { class: "sub" }, "Storyboards y borradores"))));
+        h("span", { class: "sub" }, "Storyboards, borradores y creativos"))));
 }
 
 function tabs(m, active) {
@@ -373,12 +474,13 @@ function tabs(m, active) {
     text, h("span", { class: "count" }, String(n)));
   return h("nav", { class: "tabs", "aria-label": "Secciones" },
     tab("videos", "Videos", m.videos.length),
+    tab("creativos", "Creativos", m.creatives.length),
     tab("actores", "Actores", m.actors.length),
     tab("productos", "Productos", m.products.length));
 }
 
-function pill(status) {
-  return h("span", { class: "pill st-" + (STATUS[status] ? status : "broken") }, STATUS[status] || status || "Sin estado");
+function pill(status, labels = STATUS) {
+  return h("span", { class: "pill st-" + (labels[status] ? status : "broken") }, labels[status] || status || "Sin estado");
 }
 
 function brokenNotice(m) {
@@ -505,6 +607,142 @@ function videoDetail(m, path) {
         safeUrl(v.finalUrl) ? h("p", { class: "links" }, h("a", { href: safeUrl(v.finalUrl), target: "_blank", rel: "noopener" }, "Ver el final en Higgsfield")) : null)));
 }
 
+function creativeCard(c) {
+  const sub = [
+    c.concept && c.concept.angle,
+    c.actor ? c.actor.name : (c.actorId || "Solo producto"),
+    fmtCredits(c.credits) + " cr",
+  ].filter(Boolean).join(" · ");
+  return h("a", { class: "card creative", href: "#creativo/" + encodeURIComponent(c.path) },
+    h("div", { class: "media" },
+      c.cover ? h("img", { src: url(c.cover), alt: "", loading: "lazy" }) : h("div", { class: "placeholder" }, "Sin imagen todavía"),
+      h("span", { class: "badge" }, c.type === "carousel" ? "Carrusel · " + c.pieces.length : "Estática")),
+    h("div", { class: "card-body" },
+      pill(c.status, CREATIVE_STATUS),
+      h("h3", {}, c.title || c.id),
+      h("p", { class: "meta" }, sub)));
+}
+
+function creativesView(m) {
+  if (!m.creatives.length) {
+    return h("section", { class: "section" }, h("div", { class: "empty" },
+      h("h2", {}, "Todavía no hay creativos"),
+      h("p", { class: "muted" }, "Pedile a Claude, por ejemplo: “Quiero creativos para Meta Ads de este producto”. Los vas a ver acá.")));
+  }
+  const filters = [["all", "Todos"], ["draft", "Por revisar"], ["approved", "Aprobados"], ["discarded", "Descartados"]];
+  const list = m.creatives.filter((c) => creativeFilter === "all" || c.status === creativeFilter);
+  const groups = new Map();
+  for (const c of list) {
+    if (!groups.has(c.productPath)) groups.set(c.productPath, []);
+    groups.get(c.productPath).push(c);
+  }
+  const toolbar = h("div", { class: "toolbar", role: "group", "aria-label": "Filtrar creativos" },
+    filters.map(([id, text]) => h("button", {
+      class: "chip", type: "button", "aria-pressed": String(creativeFilter === id),
+      onclick: () => { creativeFilter = id; render(); },
+    }, text)));
+
+  return h("section", { class: "section" }, toolbar,
+    list.length ? [...groups].map(([path, items]) => {
+      const p = items[0].product;
+      const batches = new Map();
+      for (const c of items) {
+        const key = c.batch || "";
+        if (!batches.has(key)) batches.set(key, []);
+        batches.get(key).push(c);
+      }
+      const ordered = [...batches].sort((a, b) => b[0].localeCompare(a[0]));
+      return h("div", { class: "group" },
+        h("div", { class: "group-head" },
+          h("h2", {}, p ? p.title : items[0].productId),
+          h("span", { class: "meta" }, [p && p.clientName ? p.clientName : items[0].profileId, plural(items.length, "creativo", "creativos")].join(" · "))),
+        ordered.map(([batch, cs]) => {
+          cs.sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")) || a.id.localeCompare(b.id));
+          return h("div", { class: "subgroup" },
+            h("div", { class: "subhead" },
+              h("h3", {}, batch ? "Lote del " + (fmtBatchDay(batch) || batch) : "Sin lote"),
+              h("span", { class: "meta" }, plural(cs.length, "creativo", "creativos"))),
+            h("div", { class: "grid" }, cs.map(creativeCard)));
+        }));
+    }) : h("p", { class: "muted" }, "No hay creativos con este filtro."));
+}
+
+const SWATCH_ROLES = [["primary", "Principal"], ["accent", "Acento"], ["text", "Texto"], ["background", "Fondo"]];
+
+function brandBlock(b) {
+  const colors = b.colors || {};
+  const swatches = SWATCH_ROLES
+    .filter(([k]) => typeof colors[k] === "string" && /^#[0-9a-f]{3,8}$/i.test(colors[k]))
+    .map(([k, label]) => h("div", { class: "swatch" },
+      h("i", { style: "background:" + colors[k], role: "img", "aria-label": label + " " + colors[k] }),
+      h("span", {}, label), h("span", { class: "num muted" }, colors[k])));
+  const fonts = b.fonts ? [b.fonts.heading, b.fonts.body].filter(Boolean).join(" / ") : "";
+  return h("div", { class: "group" },
+    h("span", { class: "label" }, "Marca" + (b.name ? " · " + b.name : "")),
+    b.logoFile ? h("div", { class: "logo-box" }, h("img", { src: url(b.logoFile), alt: "Logo de " + (b.name || "la marca") })) : null,
+    swatches.length ? h("div", { class: "swatches" }, swatches) : null,
+    fonts ? h("p", { class: "meta" }, "Tipografías: " + fonts) : null,
+    b.tone ? h("p", { class: "meta" }, "Tono: " + b.tone) : null);
+}
+
+function creativeDetail(m, path) {
+  const c = m.creatives.find((x) => x.path === path);
+  if (!c) return h("div", { class: "empty" }, h("h2", {}, "Este creativo ya no está"), h("a", { href: "#creativos" }, "Volver a los creativos"));
+
+  const title = c.title || c.id;
+  const piece = (p) => {
+    const ratio = /^\d+x\d+$/.test(p.slot) ? " r" + p.slot : "";
+    return h("figure", { class: "piece" + ratio, style: "margin:0" },
+      p.current
+        ? h("a", { class: "shot", href: url(p.current.src), target: "_blank", rel: "noopener", "aria-label": "Abrir " + p.label + " en tamaño real" },
+            h("img", { src: url(p.current.src), alt: title + " · " + p.label, loading: "lazy" }))
+        : h("div", { class: "shot" }, h("div", { class: "placeholder" }, "Sin imagen todavía")),
+      h("figcaption", { class: "meta" }, p.label + (p.current ? " · versión " + p.current.n : "")),
+      p.older.length ? h("div", { class: "olds" }, "Anteriores",
+        p.older.map((o) => h("a", { href: url(o.src), target: "_blank", rel: "noopener", "aria-label": p.label + ", versión " + o.n },
+          h("img", { src: url(o.src), alt: "", loading: "lazy" }), "v" + o.n))) : null);
+  };
+
+  const fact = (label, value, wide) => value ? h("div", { class: wide ? "fact wide" : "fact" }, h("span", { class: "label" }, label), h("span", {}, value)) : null;
+  const k = c.concept || {};
+  const mode = c.textMode === "template" ? "Plantilla" + (c.layout ? " · " + c.layout : "")
+    : c.textMode === "integrated" ? "Texto en la imagen" : null;
+  const cp = c.copy || {};
+  const copyRows = [
+    ["Texto principal", cp.primaryText], ["Titular", cp.headline], ["Descripción", cp.description],
+    ["Botón", cp.cta], ["Nombre del anuncio", c.adName],
+  ].filter(([, v]) => typeof v === "string" && v);
+  const copyRow = ([label, value]) => h("div", { class: "copyrow" },
+    h("div", {}, h("span", { class: "label" }, label), h("p", {}, value)),
+    h("button", { class: "chip", type: "button", "aria-label": "Copiar " + label.toLowerCase(), onclick: () => copyText(value, label.toLowerCase()) }, "Copiar"));
+
+  return h("section", { class: "section" },
+    h("a", { class: "back", href: "#creativos" }, "← Volver a los creativos"),
+    h("div", { class: "info" },
+      pill(c.status, CREATIVE_STATUS),
+      h("h2", {}, title),
+      h("p", { class: "meta" }, c.type === "carousel" ? "Carrusel · " + plural(c.pieces.length, "tarjeta", "tarjetas") : "Estática")),
+    c.pieces.length ? h("div", { class: "pieces" + (c.type === "static" ? " static" : "") }, c.pieces.map(piece))
+      : h("div", { class: "empty" }, h("p", { class: "muted" }, "Todavía no hay imágenes de este creativo.")),
+    h("div", { class: copyRows.length ? "cols" : "info" },
+      copyRows.length ? h("div", { class: "info" },
+        h("div", { class: "group" }, h("span", { class: "label" }, "Texto del anuncio"), copyRows.map(copyRow))) : null,
+      h("div", { class: "info" },
+        h("div", { class: "facts" },
+          fact("Producto", c.product ? c.product.title : c.productId, true),
+          fact("Ángulo", k.angle),
+          fact("Conciencia", k.awareness),
+          fact("Visual", k.visual),
+          fact("Por qué es distinto", k.why, true),
+          fact("Actor", c.actor ? c.actor.name : (c.actorId || "Solo producto")),
+          fact("Texto", mode),
+          fact("Créditos", fmtCredits(c.credits)),
+          fact("Versiones", c.versionCount ? String(c.versionCount) : null),
+          fact("Lote", c.batch),
+          fact("Actualizado", fmtDate(c.updatedAt || c.createdAt))),
+        c.brand ? brandBlock(c.brand) : null)));
+}
+
 function actorsView(m) {
   if (!m.actors.length) {
     return h("div", { class: "empty" }, h("h2", {}, "Todavía no hay actores"),
@@ -538,13 +776,15 @@ function productsView(m) {
   }
   return h("section", { class: "section" }, h("div", { class: "rows" }, m.products.map((p) => {
     const n = m.videos.filter((v) => v.productPath === p.path).length;
+    const nc = m.creatives.filter((c) => c.productPath === p.path).length;
     return h("div", { class: "row" },
       p.cover ? h("img", { src: url(p.cover), alt: "", loading: "lazy" }) : h("span", { class: "thumb" }),
       h("div", {},
         h("p", { class: "title" }, p.title || p.productId),
-        h("p", { class: "meta" }, [p.clientName || p.profileId, PLATFORM[p.platform] || p.platform, fmtPrice(p), plural(n, "video", "videos")].filter(Boolean).join(" · "))),
+        h("p", { class: "meta" }, [p.clientName || p.profileId, PLATFORM[p.platform] || p.platform, fmtPrice(p), plural(n, "video", "videos"), plural(nc, "creativo", "creativos")].filter(Boolean).join(" · "))),
       h("div", { class: "end links" },
         n ? h("a", { href: "#videos", onclick: () => { videoFilter = "all"; } }, "Ver videos") : null,
+        nc ? h("a", { href: "#creativos", onclick: () => { creativeFilter = "all"; } }, "Ver creativos") : null,
         safeUrl(p.url) ? h("a", { href: safeUrl(p.url), target: "_blank", rel: "noopener" }, "Publicación") : null,
         exportButton("Exportar", exportRequest("product", p.title || p.productId, p.path), "Exportar producto " + (p.title || p.productId))));
   })));
@@ -557,6 +797,8 @@ function render() {
   let body;
   let active = "videos";
   if (hash.startsWith("video/")) body = videoDetail(model, hash.slice(6));
+  else if (hash.startsWith("creativo/")) { active = "creativos"; body = creativeDetail(model, hash.slice(9)); }
+  else if (hash === "creativos") { active = "creativos"; body = creativesView(model); }
   else if (hash === "actores") { active = "actores"; body = actorsView(model); }
   else if (hash === "productos") { active = "productos"; body = productsView(model); }
   else body = videosView(model);
