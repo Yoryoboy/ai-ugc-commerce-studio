@@ -444,7 +444,9 @@ async function poll() {
     const before = state.estudio ? JSON.stringify(state.estudio) : null;
     // The server may answer /api/salud without the cookie: an authenticated call tells whether this tab still has access.
     try { await loadEstudio(); } catch (e) { return; }
-    if (state.conn !== "ok") {
+    // First data after the page was opened while the server was still indexing (503), or after a
+    // reconnection: draw the current view, which still shows the empty "no data" state.
+    if (state.conn !== "ok" || before === null) {
       setConn("ok");
       await loadActores();
       await route(true);
