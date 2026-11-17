@@ -37,3 +37,19 @@ after three plain video attempts (143 credits) had failed.
 
 Not worth it to fix a video: `video_edit` (53 for a 15 s draft, came out identical) and
 Ad Multiplier hook rewrite (15 at 480p, no visible improvement).
+
+## Creatives (Meta Ads, `crear-creativos`)
+
+Every image is GPT Image 2.6 at 2.75 credits. Count images, not concepts:
+
+- Static: 2 images (4:5 and 9:16) = 5.5. A 4:5-only static is 1 image.
+- Carousel: one image per card (2–10).
+- Example batch of 8 concepts: 6 statics × 2 slots + 2 carousels × 4 cards = 12 + 8 = **20 images
+  = 55 credits**.
+- Template mode: changing text (title, price, button, layout) costs **0**: only a new
+  `<slot>-diseno-vN.html` and a render with `componer.sh`.
+- Integrated mode: a text error (or any change to the image) costs **one more image** per slot
+  that changes (2.75).
+- Asking for a change on one slot or card regenerates only that slot or card.
+
+Confirm the total with `get_cost: true` before generating.

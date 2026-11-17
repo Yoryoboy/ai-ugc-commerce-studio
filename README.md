@@ -1,13 +1,14 @@
 # UGC Studio
 
-Plugin de Claude para crear videos estilo UGC (contenido de creadores) con IA para productos de
-e-commerce, sin salir de la app de escritorio de Claude.
+Plugin de Claude para crear videos estilo UGC (contenido de creadores) y creativos para Meta Ads
+(estáticas y carruseles) con IA para productos de e-commerce, sin salir de la app de escritorio de
+Claude.
 
 - **Generación:** conector de [Higgsfield](https://higgsfield.ai). Usa GPT Image 2.6 para las
   imágenes y Seedance 2.5 para el video con voz.
 - **Datos de los productos:** conector BI-MCP. Trae el catálogo y las ventas de Mercado Libre,
   Tiendanube y VTEX.
-- **Galería:** una página en tu computadora con todos los actores, productos y videos, sus
+- **Galería:** una página en tu computadora con todos los actores, productos, videos y creativos, sus
   versiones, el storyboard y los créditos. Se arma sola a partir de la carpeta del estudio y se
   actualiza mientras Claude trabaja.
 
@@ -16,6 +17,8 @@ e-commerce, sin salir de la app de escritorio de Claude.
 - La **app de escritorio de Claude** en Mac, con la pestaña **Code**.
 - Una cuenta de **Higgsfield** con créditos.
 - Acceso a **BI-MCP**. Pedíselo a quien administra los clientes.
+- **Google Chrome** instalado, para los creativos con texto en plantilla (Claude lo usa por
+  detrás, sin abrir ventanas).
 
 ## Instalación (una sola vez)
 
@@ -71,6 +74,7 @@ palabras:
 | Crear una persona virtual para los videos | "Quiero crear un actor" |
 | Elegir qué producto conviene | "¿A qué producto de este cliente le conviene un video?" |
 | Hacer un video | "Quiero un video para las patas de sommier" |
+| Hacer creativos para Meta Ads | "Haceme creativos para Meta de las patas de sommier" |
 | Ver todo lo creado | Doble clic en `galeria.html`, o "Abrí la galería" |
 | Pasar trabajo a otra compu | "Exportá el video de las patas", "Exportá el cliente Acme", "Exportá todo el studio" |
 | Traer trabajo de otra compu | Arrastrá el `.zip` al chat, o dejalo en `importaciones/` y escribí "Importá lo que dejé" |
@@ -88,13 +92,27 @@ Un video de 15 s en borrador cuesta unos 56 créditos. Si te gusta, se pasa a 10
 generarlo. Podés dejar la galería abierta: las escenas y los videos aparecen ahí a medida que se
 crean.
 
+Para los creativos de Meta Ads, Claude:
+
+1. Arma (una sola vez por cliente) el kit de marca: colores, tipografías y logo.
+2. Propone una tabla de conceptos bien distintos entre sí (8 por defecto, podés pedir más o
+   menos): ángulo, a quién le habla, quién aparece, estilo de imagen y si es estática o carrusel.
+   Meta agrupa los anuncios que se parecen, así que cada concepto tiene que ser distinto de verdad.
+3. Genera cada creativo en 4:5 (feed) y 9:16 (stories y reels), o las tarjetas del carrusel. El
+   texto va dibujado por la IA o puesto con la plantilla de la marca, según el concepto.
+4. Te deja en la galería cada creativo con su texto del anuncio y el nombre para Meta, listos
+   para que los suba el otro conector.
+
+Cada imagen cuesta unos 2,75 créditos: una tanda de 8 conceptos ronda los 55 créditos. Cambiar
+solo el texto de una plantilla no cuesta nada.
+
 ## Dónde queda cada cosa
 
 ```txt
 UGC Studio/
 ├── galeria.html    la galería: abrila con doble clic
 ├── actores/        un actor por carpeta: retrato, ángulos, ficha
-├── clientes/       por cliente y producto: fotos, ficha y videos (con storyboard y versiones)
+├── clientes/       por cliente: kit de marca, y por producto: fotos, ficha, videos y creativos
 ├── exportaciones/  los paquetes .zip que exportás para otra compu
 ├── importaciones/  dejá acá los paquetes que te pasan (opcional)
 ├── studio.json     configuración del estudio (no lo borres)
@@ -150,20 +168,23 @@ Seguí estos pasos en orden y verificá cada uno antes de pasar al siguiente.
 
 ```txt
 references/workspace.md   el contrato: carpetas, nombres de archivo y campos de cada .json
-skills/                   los flujos (setup, crear-actor, crear-video, transferir); guardan según
-                          el contrato
+skills/                   los flujos (setup, crear-actor, crear-video, crear-creativos,
+                          transferir); guardan según el contrato
+references/plantillas/    la plantilla HTML de los creativos con texto puesto encima
 hooks/hooks.json          al abrir la sesión y después de cada archivo que escribe Claude,
                           corre scripts/sincronizar.sh
 scripts/sincronizar.sh    copia la galería al estudio, valida los .json y arma .galeria/datos.js
                           leyendo las carpetas; avisa a Claude si un .json está roto
 scripts/miniatura.sh      miniatura de un video (ffmpeg, o qlmanage + sips en Mac)
+scripts/componer.sh       pasa una plantilla de creativo a PNG con Google Chrome sin ventana
 scripts/exportar.sh       arma el paquete .zip de exportación con su manifest.json
 scripts/importar.sh       revisa un paquete, muestra qué trae y lo importa sin pisar nada
 galeria/galeria.html      la galería: lee datos.js y se recarga sola cada 3 segundos
 ```
 
 Los hooks se instalan con el plugin y no hacen nada en carpetas que no son un estudio (sin
-`studio.json`). Los scripts usan solo herramientas que trae macOS: no hay que instalar nada.
+`studio.json`). Los scripts usan solo herramientas que trae macOS; la única excepción es
+`componer.sh`, que necesita Google Chrome (o Chromium, Edge o Brave).
 
 ## Para desarrolladores
 
@@ -172,8 +193,9 @@ Los hooks se instalan con el plugin y no hacen nada en carpetas que no son un es
 plugins/ugc-studio/               el plugin: skills, referencias, hooks, scripts y galería
 ```
 
-Tests (necesitan Node; los de transferir, también unzip y zip o python3):
-`sh tests/sincronizar.test.sh` y `sh tests/transferir.test.sh`. Para
+Tests (necesitan Node; los de transferir, también unzip y zip o python3; los de componer, Chrome
+o Chromium): `sh tests/sincronizar.test.sh`, `sh tests/transferir.test.sh` y
+`sh tests/componer.test.sh`. Para
 probarlo contra un estudio real: `CLAUDE_PROJECT_DIR=<estudio> sh
 plugins/ugc-studio/scripts/sincronizar.sh --resumen`.
 

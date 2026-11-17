@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Creativo</title>
+<!--
+  UGC Studio creative template. Copy this file into the creative folder as
+  <slot>-diseno-vN.html, edit ONLY the JSON inside <script id="datos">, then render it with
+  scripts/componer.sh. Every text is set with textContent, so any character is safe (only a
+  literal "</" must be written "<\/" inside the JSON).
+
+  Fields of the JSON (all optional except formato, diseno, imagen):
+    formato        "4x5" (1080x1350), "9x16" (1080x1920) or "1x1" (1080x1080)
+    diseno         "titular" | "oferta" | "beneficios" | "comparativa" | "tarjeta"
+    imagen         the model image, relative to this file ("4x5-base-v1.png")
+    zona           where the text goes: "abajo" (default) or "arriba"
+    etiqueta       small badge above the title ("Nuevo", "-30%", "Envío gratis")
+    titulo         the main line; keep it short (about 6 words)
+    subtitulo      one supporting line
+    puntos         beneficios: 2 to 4 short lines
+    columnas       comparativa: [{ "titulo": "Sin…", "puntos": [...] }, { "titulo": "Con…", "puntos": [...] }]
+    precio         oferta: "$ 63.529"
+    precioAnterior oferta: crossed-out previous price
+    boton          text of a button drawn on the image ("Comprá ahora"); omit to leave it out
+    numero         tarjeta: card number shown in the corner ("1/4")
+    marca          the content of marca.json, as it is: { "colors": { "primary", "accent", "text", "background" },
+                   "fonts": { "heading", "body", "google" }, "logo": "../../../marca/<logo from marca.json>" }
+                   (extra keys such as name or tone are ignored; the logo path is relative to this file;
+                   the Spanish keys "colores" and "fuentes" still work)
+
+  The rendered page reports its state on the body element for scripts/componer.sh: data-estado (listo | error),
+  data-escala (text scale used), data-desborde ("si" when the text does not fit), data-fuentes
+  ("ok" | "fallback": whether the brand fonts really loaded; data-faltan names the missing ones) and data-primary (the primary color used).
+-->
+<script type="application/json" id="datos">
+{
+  "formato": "4x5",
+  "diseno": "titular",
+  "imagen": "4x5-base-v1.png",
+  "zona": "abajo",
+  "etiqueta": "Nuevo",
+  "titulo": "Tu cama, 10 cm más alta",
+  "subtitulo": "Patas de madera maciza que se colocan en minutos",
+  "boton": "Comprá ahora",
+  "marca": {
+    "colors": { "primary": "#0c6b62", "accent": "#f3c623", "text": "#142024", "background": "#ffffff" },
+    "fonts": { "heading": "Montserrat", "body": "Inter", "google": true },
+    "logo": null
+  }
+}
+</script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: var(--w); height: var(--h); overflow: hidden; background: #000; }
+body {
+  --primary: #0c6b62; --accent: #f3c623; --ink: #142024; --paper: #ffffff;
+  --f-head: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-body: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --s: 1;
+  position: relative; font-family: var(--f-body); color: #fff;
+  -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision;
+}
+.fondo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.velo { position: absolute; left: 0; right: 0; height: 62%; pointer-events: none; }
+.abajo .velo { bottom: 0; background: linear-gradient(to top, rgba(0,0,0,.78) 0%, rgba(0,0,0,.55) 45%, rgba(0,0,0,0) 100%); }
+.arriba .velo { top: 0; background: linear-gradient(to bottom, rgba(0,0,0,.78) 0%, rgba(0,0,0,.55) 45%, rgba(0,0,0,0) 100%); }
+.segura { position: absolute; left: var(--pad-x); right: var(--pad-x); top: var(--pad-top); bottom: var(--pad-bottom); display: flex; flex-direction: column; }
+.abajo .segura { justify-content: flex-end; }
+.arriba .segura { justify-content: flex-start; }
+.bloque { display: flex; flex-direction: column; gap: calc(22px * var(--s)); flex: none; }
+.etiqueta { align-self: flex-start; background: var(--accent); color: var(--ink); font-family: var(--f-head); font-weight: 800; font-size: calc(34px * var(--s)); padding: calc(10px * var(--s)) calc(22px * var(--s)); border-radius: 999px; letter-spacing: .01em; }
+.titulo { font-family: var(--f-head); font-weight: 800; font-size: calc(var(--t) * var(--s)); line-height: 1.04; letter-spacing: -0.015em; text-wrap: balance; text-shadow: 0 2px 18px rgba(0,0,0,.25); }
+.subtitulo { font-size: calc(var(--st) * var(--s)); line-height: 1.25; font-weight: 500; opacity: .95; text-wrap: pretty; }
+.boton { align-self: flex-start; background: var(--primary); color: #fff; font-family: var(--f-head); font-weight: 700; font-size: calc(36px * var(--s)); padding: calc(20px * var(--s)) calc(40px * var(--s)); border-radius: calc(16px * var(--s)); margin-top: calc(8px * var(--s)); }
+.precios { display: flex; align-items: baseline; gap: calc(24px * var(--s)); flex-wrap: wrap; }
+.precio { font-family: var(--f-head); font-weight: 800; font-size: calc(var(--t) * 1.05 * var(--s)); line-height: 1; color: var(--accent); }
+.anterior { font-size: calc(var(--st) * 1.1 * var(--s)); text-decoration: line-through; opacity: .8; }
+.oferta .etiqueta { font-size: calc(64px * var(--s)); padding: calc(14px * var(--s)) calc(34px * var(--s)); }
+.panel { background: color-mix(in srgb, var(--paper) 94%, transparent); color: var(--ink); border-radius: calc(28px * var(--s)); padding: calc(40px * var(--s)); box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+.panel .titulo { text-shadow: none; font-size: calc(var(--t) * .78 * var(--s)); }
+.lista { list-style: none; display: flex; flex-direction: column; gap: calc(18px * var(--s)); }
+.lista li { display: grid; grid-template-columns: calc(48px * var(--s)) 1fr; gap: calc(18px * var(--s)); align-items: start; font-size: calc(var(--st) * 1.05 * var(--s)); line-height: 1.25; font-weight: 600; }
+.marca-ok, .marca-no { width: calc(48px * var(--s)); height: calc(48px * var(--s)); border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: calc(28px * var(--s)); color: #fff; margin-top: calc(-2px * var(--s)); }
+.marca-ok { background: var(--primary); }
+.marca-no { background: #9aa3a6; }
+.columnas { display: grid; grid-template-columns: 1fr 1fr; gap: calc(28px * var(--s)); }
+.columna { display: flex; flex-direction: column; gap: calc(16px * var(--s)); }
+.columna h3 { font-family: var(--f-head); font-size: calc(var(--st) * 1.1 * var(--s)); font-weight: 800; }
+.columna.sin h3 { color: #6b7275; }
+.columna.con h3 { color: var(--primary); }
+.columna .lista li { font-size: calc(var(--st) * .9 * var(--s)); }
+.numero { position: absolute; top: var(--pad-corner); left: var(--pad-x); background: rgba(0,0,0,.55); color: #fff; font-family: var(--f-head); font-weight: 700; font-size: 30px; padding: 8px 20px; border-radius: 999px; }
+.logo { position: absolute; top: var(--pad-corner); right: var(--pad-x); max-width: 240px; max-height: 110px; object-fit: contain; filter: drop-shadow(0 2px 10px rgba(0,0,0,.35)); }
+.error { position: absolute; inset: 40px; background: #a3261b; color: #fff; font: 600 40px/1.3 system-ui, sans-serif; padding: 40px; border-radius: 20px; white-space: pre-wrap; }
+</style>
+</head>
+<body data-estado="cargando">
+<script>
+"use strict";
+(function () {
+  const FORMATOS = {
+    "4x5": { w: 1080, h: 1350, top: 72, bottom: 72, x: 72, corner: 56, t: 104, st: 42 },
+    "1x1": { w: 1080, h: 1080, top: 64, bottom: 64, x: 64, corner: 52, t: 96, st: 40 },
+    // Stories and Reels draw their own interface: keep 14 % at the top and 35 % at the bottom free.
+    "9x16": { w: 1080, h: 1920, top: 270, bottom: 672, x: 72, corner: 160, t: 112, st: 44 },
+  };
+  const DISENOS = ["titular", "oferta", "beneficios", "comparativa", "tarjeta"];
+  const body = document.body;
+
+  function fallar(msg) {
+    body.dataset.estado = "error";
+    body.dataset.error = msg;
+    const caja = document.createElement("div");
+    caja.className = "error";
+    caja.textContent = "Plantilla con error:\n" + msg;
+    body.append(caja);
+  }
+
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = String(text);
+    return e;
+  }
+
+  function texto(v) { return typeof v === "string" && v.trim() !== "" ? v : null; }
+
+  function lista(puntos, tipo) {
+    const ul = el("ul", "lista");
+    for (const p of puntos) {
+      if (!texto(p)) continue;
+      const li = el("li");
+      li.append(el("span", tipo === "no" ? "marca-no" : "marca-ok", tipo === "no" ? "✕" : "✓"), el("span", "", p));
+      ul.append(li);
+    }
+    return ul;
+  }
+
+  function color(v, def) { return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : def; }
+
+  function fuente(nombre) {
+    return typeof nombre === "string" && /^[A-Za-z0-9 ]+$/.test(nombre)
+      ? '"' + nombre + '", system-ui, -apple-system, "Segoe UI", sans-serif' : null;
+  }
+
+  // The brand fonts asked for that are NOT available (not loaded from Google, not installed): a text
+  // drawn with an available font is wider or narrower than the same text in the generic fallbacks.
+  function fuentesFaltantes(nombres) {
+    const ctx = document.createElement("canvas").getContext("2d");
+    const prueba = "Wmqgy@ 0123456789 abcdefghijklmnopqrstuvwxyz";
+    const ancho = (familia, generica) => { ctx.font = '800 64px ' + familia + generica; return ctx.measureText(prueba).width; };
+    return nombres.filter((n, i, a) => fuente(n) && a.indexOf(n) === i).filter((n) =>
+      !["monospace", "serif", "sans-serif"].some((g) => ancho('"' + n + '", ', g) !== ancho("", g)));
+  }
+
+  // Shrinks every text (--s) until the block fits its share of the safe area and no word overflows
+  // sideways. The text may cover at most 60 % of the safe area (70 % on a panel): more than that
+  // hides the image and reads as a wall of text.
+  function ajustar(segura, bloque, tope) {
+    const desborda = () => bloque.getBoundingClientRect().height > segura.clientHeight * tope + 1
+      || [...bloque.querySelectorAll("*")].some((e) => e.scrollWidth > e.clientWidth + 1);
+    let s = 1;
+    while (desborda() && s > 0.6) {
+      s = Math.round((s - 0.04) * 100) / 100;
+      body.style.setProperty("--s", String(s));
+    }
+    body.dataset.escala = String(s);
+    if (desborda()) body.dataset.desborde = "si";
+  }
+
+  async function armar() {
+    let d;
+    try { d = JSON.parse(document.getElementById("datos").textContent); } catch (e) {
+      return fallar("el bloque de datos no es JSON válido (" + e.message + ")");
+    }
+    const f = FORMATOS[d.formato];
+    if (!f) return fallar("formato desconocido: " + d.formato + " (usá 4x5, 9x16 o 1x1)");
+    if (!DISENOS.includes(d.diseno)) return fallar("diseño desconocido: " + d.diseno + " (usá " + DISENOS.join(", ") + ")");
+    if (!texto(d.imagen)) return fallar("falta la imagen");
+
+    const r = document.documentElement.style;
+    r.setProperty("--w", f.w + "px");
+    r.setProperty("--h", f.h + "px");
+    const m = d.marca || {};
+    // marca.json keys (colors, fonts); the Spanish ones are still read, the English ones win.
+    const c = { ...(m.colores || {}), ...(m.colors || {}) };
+    const fu = { ...(m.fuentes || {}), ...(m.fonts || {}) };
+    const props = {
+      "--primary": color(c.primary, "#0c6b62"), "--accent": color(c.accent, "#f3c623"),
+      "--ink": color(c.text, "#142024"), "--paper": color(c.background, "#ffffff"),
+      "--pad-x": f.x + "px", "--pad-top": f.top + "px", "--pad-bottom": f.bottom + "px",
+      "--pad-corner": f.corner + "px", "--t": f.t + "px", "--st": f.st + "px",
+    };
+    if (fuente(fu.heading)) props["--f-head"] = fuente(fu.heading);
+    if (fuente(fu.body)) props["--f-body"] = fuente(fu.body);
+    for (const [k, v] of Object.entries(props)) body.style.setProperty(k, v);
+    body.dataset.primary = props["--primary"];
+
+    if (fu.google) {
+      const fams = [fu.heading, fu.body].filter((n, i, a) => fuente(n) && a.indexOf(n) === i)
+        .map((n) => "family=" + encodeURIComponent(n).replace(/%20/g, "+") + ":wght@400;500;600;700;800");
+      if (fams.length) {
+        const link = el("link");
+        link.rel = "stylesheet";
+        link.href = "https://fonts.googleapis.com/css2?" + fams.join("&") + "&display=block";
+        document.head.append(link);
+        await new Promise((ok) => { link.onload = ok; link.onerror = ok; setTimeout(ok, 4000); });
+      }
+    }
+
+    body.classList.add(d.zona === "arriba" ? "arriba" : "abajo", d.diseno);
+
+    const img = el("img", "fondo");
+    img.alt = "";
+    const cargada = new Promise((ok, mal) => { img.onload = ok; img.onerror = mal; });
+    img.src = d.imagen;
+    try { await cargada; } catch (e) { return fallar("no encuentro la imagen: " + d.imagen); }
+    body.append(img, el("div", "velo"));
+
+    if (texto(d.numero)) body.append(el("div", "numero", d.numero));
+    if (texto(m.logo)) {
+      const logo = el("img", "logo");
+      logo.alt = "";
+      const ok = await new Promise((res) => { logo.onload = () => res(true); logo.onerror = () => res(false); logo.src = m.logo; });
+      if (!ok) return fallar("no encuentro el logo: " + m.logo);
+      body.append(logo);
+    }
+
+    const segura = el("div", "segura");
+    const bloque = el("div", "bloque");
+    segura.append(bloque);
+    body.append(segura);
+
+    let destino = bloque;
+    if (d.diseno === "beneficios" || d.diseno === "comparativa") {
+      destino = el("div", "panel bloque");
+      bloque.append(destino);
+      body.querySelector(".velo").remove();
+    }
+    if (texto(d.etiqueta)) destino.append(el("div", "etiqueta", d.etiqueta));
+    if (texto(d.titulo)) destino.append(el("h1", "titulo", d.titulo));
+    if (d.diseno === "oferta" && (texto(d.precio) || texto(d.precioAnterior))) {
+      const precios = el("div", "precios");
+      if (texto(d.precio)) precios.append(el("span", "precio", d.precio));
+      if (texto(d.precioAnterior)) precios.append(el("span", "anterior", d.precioAnterior));
+      destino.append(precios);
+    }
+    if (texto(d.subtitulo)) destino.append(el("p", "subtitulo", d.subtitulo));
+    if (d.diseno === "beneficios") {
+      if (!Array.isArray(d.puntos) || !d.puntos.length) return fallar("beneficios necesita \"puntos\"");
+      destino.append(lista(d.puntos, "ok"));
+    }
+    if (d.diseno === "comparativa") {
+      const cols = d.columnas;
+      if (!Array.isArray(cols) || cols.length !== 2) return fallar("comparativa necesita dos \"columnas\"");
+      const wrap = el("div", "columnas");
+      cols.forEach((col, i) => {
+        const box = el("div", "columna " + (i === 0 ? "sin" : "con"));
+        box.append(el("h3", "", (col && col.titulo) || ""), lista((col && col.puntos) || [], i === 0 ? "no" : "ok"));
+        wrap.append(box);
+      });
+      destino.append(wrap);
+    }
+    if (texto(d.boton)) destino.append(el("div", "boton", d.boton));
+    if (!destino.childElementCount) return fallar("no hay ningún texto para mostrar");
+
+    // A web font is only fetched when some text uses it: ask for both brand fonts so the check below
+    // does not call "fallback" a font that simply had no text to draw.
+    if (document.fonts && document.fonts.load) {
+      const pedidas = [fu.heading, fu.body].filter((n, i, a) => fuente(n) && a.indexOf(n) === i);
+      await Promise.all(pedidas.flatMap((n) => ["500", "800"].map((w) =>
+        document.fonts.load(w + ' 40px "' + n + '"', "Wmqgy").catch(() => null))));
+    }
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    const faltan = fuentesFaltantes([fu.heading, fu.body]);
+    body.dataset.fuentes = faltan.length ? "fallback" : "ok";
+    if (faltan.length) body.dataset.faltan = faltan.join(", ");
+    ajustar(segura, bloque, destino === bloque ? 0.6 : 0.7);
+    body.dataset.estado = "listo";
+  }
+
+  armar().catch((e) => fallar(String(e && e.message || e)));
+})();
+</script>
+</body>
+</html>

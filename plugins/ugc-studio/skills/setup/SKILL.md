@@ -35,12 +35,21 @@ Create `actores/`, `clientes/` and `studio.json`:
 {
   "connectors": { "higgsfield": "<connector name>", "bimcp": "<connector name>" },
   "storyboardScenes": null,
+  "creativeConcepts": null,
   "credits": { "available": <balance from step 1>, "checkedAt": "<ISO date>" },
   "createdAt": "<ISO date>"
 }
 ```
 
-Product and video folders are created later by the other skills.
+Product, video, brand kit and creative folders are created later by the other skills.
+
+## 2b. Check Google Chrome (creatives only)
+
+Creatives with template text are rendered by `scripts/componer.sh` with Google Chrome running
+hidden. Check that one is installed: `ls -d "/Applications/Google Chrome.app"` (Chromium, Microsoft
+Edge or Brave in `/Applications` also work). If none is there, do not stop the setup: tell the user
+in one line that to make creatives with the brand's template they need Google Chrome
+(google.com/chrome), and that videos and creatives with text drawn by the AI work without it.
 
 ## 3. Build and open the gallery
 
@@ -65,7 +74,7 @@ Tell the user, in Spanish and in a few lines:
 - Always open Claude on this same folder; otherwise it cannot find their actors and videos.
 - Credits available (from step 1).
 - What they can ask next: "Quiero crear un actor", "¿A qué producto le conviene un video?",
-  "Quiero crear un video para <producto>". To move work to or from another computer: "Exportá
+  "Quiero crear un video para <producto>", "Haceme creativos para Meta de <producto>". To move work to or from another computer: "Exportá
   …" or "Importá …".
 
 ## Upgrading a 0.1.0 studio

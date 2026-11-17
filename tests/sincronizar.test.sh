@@ -130,6 +130,35 @@ run "$S" --resumen
 b2=$(index "$S" 'e.build')
 [ -n "$b1" ] && [ "$b1" != "$b2" ] && pass "build id changes on every build" || fail "build id changes on every build ($b1 / $b2)"
 
+# --- brand kits and creatives -----------------------------------------------------------------
+C=$(new_studio c)
+mkdir -p "$C/clientes/acme/marca" "$C/clientes/acme/MLA1/creativos/2026-01-02-x-dolor" \
+  "$C/clientes/acme/MLA1/creativos/2026-01-02-x-precio" "$C/clientes/acme/MLA1/creativos/2026-01-02-x-huerfano"
+printf '{"name": "Acme"}\n' >"$C/clientes/acme/marca/marca.json"
+: >"$C/clientes/acme/marca/logo.png"
+printf '{"title": "Dolor", "type": "static", "status": "draft"}\n' \
+  >"$C/clientes/acme/MLA1/creativos/2026-01-02-x-dolor/creativo.json"
+: >"$C/clientes/acme/MLA1/creativos/2026-01-02-x-dolor/4x5-v1.png"
+printf '{"title": "Precio", "type": "carousel", "status": "approved"}\n' \
+  >"$C/clientes/acme/MLA1/creativos/2026-01-02-x-precio/creativo.json"
+run "$C" --resumen
+check "creatives: summary exit 0" "$CODE" "0"
+case $OUT in *"Actors: 1. Products: 1. Videos: 1 ("*) pass "creatives: video counts unchanged" ;; *) fail "creatives: video counts unchanged ($OUT)" ;; esac
+case $OUT in *"Creatives: 2 (draft 1, approved 1, discarded 0). Brand kits: 1."*) pass "creatives: summary counts" ;; *) fail "creatives: summary counts ($OUT)" ;; esac
+case $OUT in *"Creative folders without creativo.json (not shown in the gallery):"*"creativos/2026-01-02-x-huerfano"*) pass "creatives: orphan folder reported" ;; *) fail "creatives: orphan folder reported ($OUT)" ;; esac
+check "creatives: entity kinds" "$(index "$C" 'e.entities.map((x) => x.kind).join(",")')" "actor,product,brand,video,creative,creative"
+check "creatives: brand path and files" "$(index "$C" 'const b = e.entities.find((x) => x.kind === "brand"); b.path + "|" + b.files.join(",")')" "clientes/acme/marca|logo.png,marca.json"
+check "creatives: creative files" "$(index "$C" 'e.entities.find((x) => x.kind === "creative").files.join(",")')" "4x5-v1.png,creativo.json"
+check "creatives: brand folder is not a product" "$(index "$C" 'e.entities.filter((x) => x.kind === "product").length')" "1"
+
+tick
+printf '{"title": "Dolor",' >"$C/clientes/acme/MLA1/creativos/2026-01-02-x-dolor/creativo.json"
+printf '{' >"$C/clientes/acme/marca/marca.json"
+run "$C"
+check "creatives: broken creativo.json exit 2" "$CODE" "2"
+case $ERR in *"creativos/2026-01-02-x-dolor/creativo.json:"*) pass "creatives: broken creativo.json reported" ;; *) fail "creatives: broken creativo.json reported ($ERR)" ;; esac
+case $ERR in *"clientes/acme/marca/marca.json:"*) pass "creatives: broken marca.json reported" ;; *) fail "creatives: broken marca.json reported ($ERR)" ;; esac
+
 # --- the gallery copy follows the plugin --------------------------------------------------------
 printf 'old' >"$S/galeria.html"
 run "$S"

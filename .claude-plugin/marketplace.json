@@ -1,15 +1,15 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "ugc-studio",
-  "description": "UGC Studio: create AI UGC videos for e-commerce products with Higgsfield and BI-MCP, directly from Claude.",
+  "description": "UGC Studio: create AI UGC videos and Meta Ads creatives for e-commerce products with Higgsfield and BI-MCP, directly from Claude.",
   "owner": {
     "name": "Yoryo"
   },
   "plugins": [
     {
       "name": "ugc-studio",
-      "description": "Create virtual actors, pick products worth a video, and generate UGC videos with Higgsfield, with a local gallery of everything created.",
-      "version": "0.3.0",
+      "description": "Create virtual actors, pick products worth a video, and generate UGC videos and Meta Ads creatives (statics and carousels) with Higgsfield, with a local gallery of everything created.",
+      "version": "0.4.0",
       "author": {
         "name": "Yoryo"
       },
