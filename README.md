@@ -14,11 +14,16 @@ Claude.
 
 ## Qué necesitás
 
-- La **app de escritorio de Claude** en Mac, con la pestaña **Code**.
+- La **app de escritorio de Claude** en Mac, con la pestaña **Code** (o Claude Code en la
+  terminal, en Mac o Linux).
 - Una cuenta de **Higgsfield** con créditos.
 - Acceso a **BI-MCP**. Pedíselo a quien administra los clientes.
 - **Google Chrome** instalado, para los creativos con texto en plantilla (Claude lo usa por
   detrás, sin abrir ventanas).
+
+El setup también instala **Engram**, la memoria persistente: así Claude se acuerda de lo que
+decidiste y de qué funcionó con cada producto entre una conversación y otra. Se instala solo
+durante el paso 4.
 
 ## Instalación (una sola vez)
 
@@ -62,7 +67,13 @@ En la pestaña **Code**, con la carpeta del estudio abierta, escribí:
 Configurá el estudio
 ```
 
-Claude revisa los conectores, crea las carpetas y te abre la galería en el navegador.
+Claude revisa los conectores, instala la memoria, crea las carpetas y te abre la galería en el
+navegador. Si instaló la memoria, al final te pide abrir una sesión nueva (y, en Mac, cerrar
+Claude Desktop con Cmd+Q y volver a abrirlo).
+
+> **Atajo:** abrí Claude en la carpeta vacía del estudio y pegale "Seteá UGC Studio siguiendo el
+> README de https://github.com/Yoryoboy/ai-ugc-commerce-studio". Hace los pasos 3 y 4 por vos;
+> solo te va a pedir que conectes Higgsfield y BI-MCP y que abras una sesión nueva.
 
 ## Uso diario
 
@@ -76,6 +87,7 @@ palabras:
 | Hacer un video | "Quiero un video para las patas de sommier" |
 | Hacer creativos para Meta Ads | "Haceme creativos para Meta de las patas de sommier" |
 | Ver todo lo creado | Doble clic en `galeria.html`, o "Abrí la galería" |
+| Activar o revisar la memoria | "Activá la memoria" |
 | Pasar trabajo a otra compu | "Exportá el video de las patas", "Exportá el cliente Acme", "Exportá todo el studio" |
 | Traer trabajo de otra compu | Arrastrá el `.zip` al chat, o dejalo en `importaciones/` y escribí "Importá lo que dejé" |
 
@@ -148,19 +160,40 @@ Después cerrá y volvé a abrir la sesión de Code para que tome los cambios.
 
 ## Si sos un agente configurando el estudio
 
-Seguí estos pasos en orden y verificá cada uno antes de pasar al siguiente.
+Seguí estos pasos en orden y verificá cada uno antes de pasar al siguiente. El usuario
+normalmente no programa: hablale en castellano, simple, y decile en una línea qué hace cada paso.
 
-1. **Conectores.** La sesión tiene que tener las herramientas de Higgsfield (`balance`) y de
-   BI-MCP (`config_list_profiles`). Si falta alguno, pedile al usuario que lo conecte en
-   Configuración › Conectores y esperá.
-2. **Carpeta.** Trabajá en la carpeta que el usuario eligió para el estudio. Todas las sesiones
-   tienen que abrirse en esa misma carpeta.
-3. **Plugin.** `/plugin marketplace add Yoryoboy/ai-ugc-commerce-studio` y
-   `/plugin install ugc-studio@ugc-studio`. Verificá con `/plugin` que `ugc-studio` está
-   habilitado. Si la sesión ya estaba abierta, hay que reiniciarla para que carguen los hooks.
-4. **Estudio.** Corré la skill `ugc-studio:setup`. Al terminar tienen que existir `studio.json`,
-   `actores/`, `clientes/`, `galeria.html` y `.galeria/datos.js`.
-5. **Contrato.** Dónde va cada archivo y qué tiene cada `.json` está en
+1. **Requisitos.** Claude Code (la app de escritorio con la pestaña Code en Mac, o la terminal).
+   Mac: no hace falta nada más. Linux: `node`, `ffmpeg` y Chrome o Chromium (para validar los
+   `.json`, las miniaturas y los creativos). Revisá Google Chrome (en Mac,
+   `/Applications/Google Chrome.app`): sin él no salen los creativos con plantilla; avisá si
+   falta, no frena el resto.
+2. **Carpeta.** Trabajá en la carpeta que el usuario eligió para el estudio (vacía la primera
+   vez). Todas las sesiones tienen que abrirse en esa misma carpeta.
+3. **Plugin.** Instalalo desde la terminal (los comandos `/plugin` del chat los escribe una
+   persona, no vos):
+
+   ```sh
+   claude plugin marketplace add Yoryoboy/ai-ugc-commerce-studio
+   claude plugin install ugc-studio@ugc-studio
+   ```
+
+   Verificá con `claude plugin list` que `ugc-studio` está habilitado.
+4. **Memoria.** Instalá Engram siguiendo
+   [`plugins/ugc-studio/references/engram.md`](plugins/ugc-studio/references/engram.md) (leelo
+   desde GitHub: el plugin todavía no está cargado en esta sesión). Si ya está instalado, solo
+   verificá.
+5. **Conectores.** La sesión tiene que tener las herramientas de Higgsfield (`balance`) y de
+   BI-MCP (`config_list_profiles`). Si falta alguno, pedile al usuario que lo conecte
+   (Configuración › Conectores en la app; en la terminal, `/mcp`) y esperá. BI-MCP se agrega con
+   el enlace que le pasaron al usuario.
+6. **Sesión nueva.** El plugin y la memoria cargan al abrir una sesión. Pedile al usuario que
+   abra una sesión nueva en la misma carpeta (en Mac, que además cierre Claude Desktop con Cmd+Q
+   y lo vuelva a abrir) y que escriba "Configurá el estudio". No podés reiniciarte solo.
+7. **Estudio.** En la sesión nueva, la skill `ugc-studio:setup` revisa conectores y memoria y
+   crea el estudio. Al terminar tienen que existir `studio.json`, `actores/`, `clientes/`,
+   `galeria.html` y `.galeria/datos.js`.
+8. **Contrato.** Dónde va cada archivo y qué tiene cada `.json` está en
    `plugins/ugc-studio/references/workspace.md`. Las skills y la galería dependen de que se
    respete.
 
@@ -168,8 +201,9 @@ Seguí estos pasos en orden y verificá cada uno antes de pasar al siguiente.
 
 ```txt
 references/workspace.md   el contrato: carpetas, nombres de archivo y campos de cada .json
-skills/                   los flujos (setup, crear-actor, crear-video, crear-creativos,
-                          transferir); guardan según el contrato
+skills/                   los flujos (setup, configurar-memoria, crear-actor, crear-video,
+                          crear-creativos, transferir); guardan según el contrato
+references/engram.md      cómo instalar la memoria persistente (Engram); lo sigue el setup
 references/plantillas/    la plantilla HTML de los creativos con texto puesto encima
 hooks/hooks.json          al abrir la sesión y después de cada archivo que escribe Claude,
                           corre scripts/sincronizar.sh
