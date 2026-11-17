@@ -682,6 +682,116 @@ describe("actions", () => {
     assert.ok(fs.existsSync(path.join(s, "studio.json")));
     assert.ok(fs.existsSync(path.join(s, C3)), "items outside the trash are untouched");
   });
+
+  test("refreshing an item whose content did not change keeps it searchable (no 500 on the next search)", async () => {
+    const s = estudioRico();
+    const srv = await iniciar(s, { watch: false });
+    const q = (t) => req(srv, { path: "/api/elementos?archivados=1&q=" + encodeURIComponent(t) });
+    const [a1] = await accion(srv, [{ tipo: "archivar", ruta: C1 }]);
+    assert.equal(a1.ok, true);
+    // The detail view prepares the search data for the new index version without listing anything.
+    assert.equal((await req(srv, { path: "/api/elemento?ruta=" + encodeURIComponent(C1) })).status, 200);
+    const [a2] = await accion(srv, [{ tipo: "archivar", ruta: C1 }]); // same JSON, same files: the entity is read again
+    assert.equal(a2.ok, true);
+    const r = await q("dolor");
+    assert.equal(r.status, 200, r.text);
+    assert.equal((await q("zzz-nada")).json().total, 0);
+  });
+
+  describe("papelera/vaciar with ids", () => {
+    const post = (srv, b) => req(srv, { method: "POST", path: "/api/papelera/vaciar", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
+    const enPapelera = (s) => fs.readdirSync(path.join(s, ".papelera")).sort();
+
+    test("deletes exactly the ids given: an entry added after the snapshot survives", async () => {
+      const s = estudioRico();
+      const srv = await iniciar(s);
+      const [a, b] = await accion(srv, [{ tipo: "papelera", ruta: C1 }, { tipo: "papelera", ruta: C2 }]);
+      const snapshot = (await getJson(srv, "/api/papelera")).entries.map((e) => e.id).sort();
+      assert.deepEqual(snapshot, [a.id, b.id].sort());
+      const [c] = await accion(srv, [{ tipo: "papelera", ruta: C3 }]); // arrives after the confirmation dialog was drawn
+      const r = await post(srv, { ids: snapshot });
+      assert.equal(r.status, 200);
+      assert.deepEqual(r.json(), { eliminados: 2, ids: snapshot, invalidos: [], noEncontrados: [], fallidos: [] });
+      assert.deepEqual(enPapelera(s), [c.id]);
+      assert.deepEqual((await getJson(srv, "/api/papelera")).entries.map((e) => e.id), [c.id]);
+      assert.ok(fs.existsSync(path.join(s, `.papelera/${c.id}/${C3}/creativo.json`)), "the newer entry keeps its content");
+    });
+
+    test("unknown and invalid ids are reported, not fatal; the valid ones still go", async () => {
+      const s = estudioRico();
+      const srv = await iniciar(s);
+      const [a, b] = await accion(srv, [{ tipo: "papelera", ruta: C1 }, { tipo: "papelera", ruta: C2 }]);
+      const gone = "2020-01-01T000000Z-abcdef";
+      const malos = ["..", ".", "../clientes", `../${a.id}`, `${a.id}/..`, `${a.id}/${C1}`, "/etc", "", "papelera.json", a.id.slice(0, -6) + "ABCDEF", 7, null, { id: a.id }, ["x"]];
+      const r = await post(srv, { ids: [a.id, gone, ...malos, a.id] });
+      assert.equal(r.status, 200);
+      const j = r.json();
+      assert.equal(j.eliminados, 1);
+      assert.deepEqual(j.ids, [a.id]);
+      assert.deepEqual(j.noEncontrados, [gone]);
+      assert.equal(j.invalidos.length, malos.length);
+      assert.deepEqual(j.fallidos, []);
+      assert.deepEqual(enPapelera(s), [b.id]);
+      for (const d of ["clientes", "actores", "studio.json"]) assert.ok(fs.existsSync(path.join(s, d)), d + " is untouched");
+      assert.ok(fs.existsSync(path.join(s, C3)), "items outside the trash are untouched");
+    });
+
+    test("an id is one entry folder name: traversal and symlinks never delete outside the trash", async () => {
+      const s = estudioRico();
+      const srv = await iniciar(s);
+      write(s, "fuera/importante.txt", "no tocar");
+      const falso = "2021-02-03T040506Z-0a0b0c";
+      fs.mkdirSync(path.join(s, ".papelera"), { recursive: true });
+      fs.symlinkSync(path.join(s, "fuera"), path.join(s, ".papelera", falso)); // a link named like an entry
+      const r = await post(srv, { ids: [falso, "../fuera", "..%2Ffuera", `${falso}/../../fuera`, "..\\fuera"] });
+      assert.equal(r.status, 200);
+      assert.equal(r.json().eliminados, 0);
+      assert.ok(fs.existsSync(path.join(s, "fuera/importante.txt")));
+      assert.ok(fs.lstatSync(path.join(s, ".papelera", falso)).isSymbolicLink(), "the link is left alone");
+    });
+
+    test("an empty list deletes nothing (it does not mean everything); ids must be an array of at most a sane size", async () => {
+      const s = estudioRico();
+      const srv = await iniciar(s);
+      await accion(srv, [{ tipo: "papelera", ruta: C1 }]);
+      const antes = enPapelera(s);
+      const vacio = await post(srv, { ids: [] });
+      assert.equal(vacio.status, 200);
+      assert.equal(vacio.json().eliminados, 0);
+      assert.deepEqual(enPapelera(s), antes);
+      for (const mal of ["x", 5, {}, null]) {
+        const r = await post(srv, { ids: mal });
+        assert.equal(r.status, 400, JSON.stringify(mal));
+        assert.deepEqual(enPapelera(s), antes);
+      }
+      assert.equal((await post(srv, { ids: Array.from({ length: 20001 }, () => "x") })).status, 400);
+      assert.deepEqual(enPapelera(s), antes);
+    });
+
+    test("ids with antesDe: only the ids that are also older than the cutoff go", async () => {
+      const s = estudioRico();
+      const srv = await iniciar(s);
+      const [a] = await accion(srv, [{ tipo: "papelera", ruta: C1 }]);
+      const viejo = "2020-01-01T000000Z-abcdef";
+      write(s, `.papelera/${viejo}/clientes/acme/viejo.txt`, "old");
+      write(s, `.papelera/${viejo}/papelera.json`, JSON.stringify({ id: viejo, originalPath: "clientes/acme/viejo.txt", trashedAt: "2020-01-01T00:00:00Z", kind: "file" }));
+      const otroViejo = "2020-01-02T000000Z-abcdef";
+      write(s, `.papelera/${otroViejo}/clientes/acme/viejo2.txt`, "old");
+      const r = await post(srv, { ids: [viejo, a.id], antesDe: "2021-01-01T00:00:00Z" });
+      assert.equal(r.status, 200);
+      assert.deepEqual(r.json().ids, [viejo]);
+      assert.deepEqual(enPapelera(s), [otroViejo, a.id].sort(), "the recent entry and the old one not named stay");
+    });
+
+    test("without ids the old behaviour holds: everything, or only what is before antesDe", async () => {
+      const s = estudioRico();
+      const srv = await iniciar(s);
+      await accion(srv, [{ tipo: "papelera", ruta: C1 }, { tipo: "papelera", ruta: C2 }]);
+      const r = await post(srv, {});
+      assert.equal(r.json().eliminados, 2);
+      assert.deepEqual(enPapelera(s), []);
+    });
+  });
 });
 
 // ---------- API: studio, items ----------
@@ -1062,6 +1172,47 @@ describe("limpiarVersiones", () => {
     assert.match(r.error, /moved 3 of 4 files; failed: thumb-v1\.jpg \(not found\)/);
     assert.deepEqual(lista(s, V1), ["borrador-v3.mp4", "escena-1.png", "final.mp4", "prompt-v1.md", "prompt-v3.md", "thumb-v3.jpg", "video.json"]);
     assert.equal((await getJson(srv, "/api/papelera")).entries.length, 3);
+  });
+
+  test("an unexpected fs error midway still reports what moved (ok: false, movidos, ids, the error) so it can be restored", async () => {
+    const s = estudioConVersiones();
+    const antes = lista(s, V1);
+    let n = 0;
+    // Test-only hook: the 3rd file raises an fs error that is not one of the server's own checks.
+    const srv = await iniciar(s, { alMover: () => { if (++n === 3) throw Object.assign(new Error("boom"), { code: "EIO" }); } });
+    const [r] = await accion(srv, [{ tipo: "limpiarVersiones", ruta: V1 }]);
+    assert.equal(r.ok, false);
+    assert.equal(r.ruta, V1);
+    assert.equal(r.movidos, 2);
+    assert.equal(r.ids.length, 2);
+    assert.match(r.error, /moved 2 of 4 files/);
+    assert.match(r.error, /EIO/);
+    assert.equal(lista(s, V1).length, antes.length - 2);
+    const entries = (await getJson(srv, "/api/papelera")).entries;
+    assert.deepEqual(entries.map((e) => e.id).sort(), [...r.ids].sort());
+    // The ids are enough to put everything back.
+    const back = await accion(srv, r.ids.map((id) => ({ tipo: "restaurar", ruta: id })));
+    assert.ok(back.every((x) => x.ok), JSON.stringify(back));
+    assert.deepEqual(lista(s, V1), antes);
+  });
+
+  test("a read-only item folder fails every file with a clear error, moves nothing and leaves no half-made trash entry", async (t) => {
+    if (process.getuid && process.getuid() === 0) return t.skip("root ignores directory permissions");
+    const s = estudioConVersiones();
+    const srv = await iniciar(s, { watch: false });
+    const dir = path.join(s, V1);
+    fs.chmodSync(dir, 0o555);
+    try {
+      const [r] = await accion(srv, [{ tipo: "limpiarVersiones", ruta: V1 }]);
+      assert.equal(r.ok, false);
+      assert.equal(r.movidos, 0);
+      assert.deepEqual(r.ids, []);
+      assert.match(r.error, /moved 0 of 4 files/);
+      assert.match(r.error, /EACCES/);
+    } finally { fs.chmodSync(dir, 0o755); }
+    assert.equal(lista(s, V1).length, 11);
+    assert.equal((await getJson(srv, "/api/papelera")).entries.length, 0);
+    assert.deepEqual(fs.existsSync(path.join(s, ".papelera")) ? fs.readdirSync(path.join(s, ".papelera")) : [], []);
   });
 });
 

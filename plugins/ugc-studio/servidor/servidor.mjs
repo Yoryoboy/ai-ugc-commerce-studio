@@ -33,6 +33,7 @@ const ESTADOS = {
   video: ["storyboard", "draft", "final", "discarded"],
 };
 const ANCHOS = [240, 480, 960];
+const MAX_IDS_VACIAR = 20000;
 const ID_PAPELERA = /^\d{4}-\d{2}-\d{2}T\d{6}Z-[0-9a-f]{6}$/;
 const SLOT_ORDER = ["4x5", "9x16", "1x1"];
 const TIPOS = {
@@ -296,8 +297,15 @@ export async function crearServidor(opts = {}) {
 
   function poner(e) {
     const antes = entidades.get(e.path);
+    if (antes && antes.firma === e.firma) {
+      // Same content: keep the object the views were built on (replacing it would drop the search data
+      // that prepararVistas added without bumping the version); only the times the periodic check compares move.
+      antes.jsonMtime = e.jsonMtime; antes.dirMtime = e.dirMtime; antes.fotosMtime = e.fotosMtime;
+      antes.updatedAt = e.updatedAt; antes.updatedMs = e.updatedMs; // from the file time when the JSON has no date
+      return;
+    }
     entidades.set(e.path, e);
-    if (!antes || antes.firma !== e.firma) marcar();
+    marcar();
   }
 
   function refrescar(kind, rel) {
@@ -835,12 +843,13 @@ export async function crearServidor(opts = {}) {
       if (!dueno) throw new ErrorAccion("the file does not belong to an item");
       if (rel === dueno.path + "/" + JSON_NAME[dueno.kind]) throw new ErrorAccion("the main JSON of an item cannot be moved alone: move its folder");
     }
+    if (opts.alMover) opts.alMover(rel); // test-only hook: raise an fs error before a move
     const ahora = new Date();
     const id = `${ahora.toISOString().slice(0, 19).replace(/:/g, "")}Z-${crypto.randomBytes(3).toString("hex")}`;
     const entrada = path.join(raiz, ".papelera", id);
     const destino = path.join(entrada, ...segs);
-    fs.mkdirSync(path.dirname(destino), { recursive: true });
     try {
+      fs.mkdirSync(path.dirname(destino), { recursive: true });
       fs.writeFileSync(path.join(entrada, "papelera.json"), JSON.stringify({
         id, originalPath: rel, trashedAt: isoSeg(ahora), kind: st.isDirectory() ? "folder" : "file",
       }, null, 2) + "\n");
@@ -849,7 +858,9 @@ export async function crearServidor(opts = {}) {
       try { fs.rmSync(entrada, { recursive: true, force: true }); } catch { /* ignore */ }
       throw new ErrorAccion("could not move: " + err.code);
     }
-    aplicarCambio(segs);
+    // The file is already in the trash: the caller must get its id even if refreshing the index fails
+    // (the periodic check catches up).
+    try { aplicarCambio(segs); } catch { /* stale index until the next check */ }
     return id;
   }
 
@@ -882,13 +893,24 @@ export async function crearServidor(opts = {}) {
     const archivos = versionesAntiguas(e);
     const ids = [];
     const fallos = [];
+    let parado = false;
     for (const f of archivos) {
+      const nombre = f.slice(e.path.length + 1);
       try { ids.push(aPapelera(f)); } catch (err) {
-        if (!(err instanceof ErrorAccion)) throw err;
-        fallos.push(`${f.slice(e.path.length + 1)} (${err.message})`);
+        if (err instanceof ErrorAccion) { fallos.push(`${nombre} (${err.message})`); continue; }
+        // Not one of our own checks: the state of the rest is unknown, so stop here, but still report
+        // what already moved (and its ids) so it can be restored.
+        fallos.push(`${nombre} (${err.code || err.message})`);
+        parado = true;
+        break;
       }
     }
-    if (fallos.length) return { ruta, ok: false, error: `moved ${ids.length} of ${archivos.length} files; failed: ${fallos.join("; ")}`, movidos: ids.length, ids };
+    if (fallos.length) {
+      return {
+        ruta, ok: false, movidos: ids.length, ids,
+        error: `moved ${ids.length} of ${archivos.length} files; failed: ${fallos.join("; ")}` + (parado ? "; stopped after an unexpected error" : ""),
+      };
+    }
     return { ruta, ok: true, movidos: ids.length, ids };
   }
 
@@ -950,23 +972,49 @@ export async function crearServidor(opts = {}) {
     return out.sort((a, b) => cmp(b.trashedAt, a.trashedAt) || cmp(b.id, a.id));
   }
 
+  // Deletes one trash entry for good. `id` already passed ID_PAPELERA, so it is a single folder name
+  // inside .papelera (no separators, no "..", no dots at all); a link or a plain file with that name is left alone.
+  function borrarEntrada(id) {
+    const dir = path.join(raiz, ".papelera", id);
+    let st;
+    try { st = fs.lstatSync(dir); } catch { return "noEncontrado"; }
+    if (!st.isDirectory()) return "noEncontrado";
+    try { fs.rmSync(dir, { recursive: true, force: true }); return "eliminado"; } catch { return "fallido"; }
+  }
+
+  // POST /api/papelera/vaciar. With `ids` it deletes exactly those entries that still exist (what the
+  // user saw in the confirmation) and nothing else, whatever was trashed since; without `ids`, every
+  // entry, or those trashed before `antesDe`. With both, only the ids that are also before `antesDe`.
+  // Ids that are not an entry name, or are gone, are reported, not fatal.
   function vaciarPapelera(body) {
     let corte = null;
     if (esObjeto(body) && body.antesDe !== undefined && body.antesDe !== null) {
       corte = typeof body.antesDe === "string" ? Date.parse(body.antesDe) : NaN;
       if (!Number.isFinite(corte)) throw new ErrorHttp(400, "invalid antesDe");
     }
-    let n = 0;
-    for (const e of entradasPapelera()) {
-      if (corte !== null && !(Date.parse(e.trashedAt) < corte)) continue;
-      const dir = path.join(raiz, ".papelera", e.id);
-      try {
-        if (!fs.lstatSync(dir).isDirectory()) continue;
-        fs.rmSync(dir, { recursive: true, force: true });
-        n++;
-      } catch { /* leave it */ }
+    const conIds = esObjeto(body) && body.ids !== undefined;
+    if (conIds && (!Array.isArray(body.ids) || body.ids.length > MAX_IDS_VACIAR)) throw new ErrorHttp(400, "ids must be an array of trash entry ids");
+    const res = { eliminados: 0, ids: [], invalidos: [], noEncontrados: [], fallidos: [] };
+    const aplicar = (id) => {
+      const r = borrarEntrada(id);
+      if (r === "eliminado") { res.eliminados++; res.ids.push(id); } else if (r === "fallido") res.fallidos.push(id); else res.noEncontrados.push(id);
+    };
+    // Entry dates are only read when they are needed: to cut by antesDe, or to list everything.
+    const fecha = corte !== null || !conIds ? new Map(entradasPapelera().map((e) => [e.id, e.trashedAt])) : new Map();
+    if (conIds) {
+      for (const id of new Set(body.ids)) {
+        if (typeof id !== "string" || !ID_PAPELERA.test(id)) { res.invalidos.push(typeof id === "string" ? id.slice(0, 100) : typeof id); continue; }
+        if (corte !== null && fecha.has(id) && !(Date.parse(fecha.get(id)) < corte)) continue;
+        aplicar(id);
+      }
+      return res;
     }
-    return { eliminados: n };
+    for (const [id, trashedAt] of fecha) {
+      if (corte !== null && !(Date.parse(trashedAt) < corte)) continue;
+      aplicar(id);
+    }
+    res.noEncontrados.length = 0; // gone between the listing and the delete: nothing to report for "everything"
+    return res;
   }
 
   // The item named by ?ruta= of a GET, checked to be inside the studio.
@@ -1254,15 +1302,23 @@ async function main() {
   if (!studio) { console.error("usage: servidor.mjs --studio <studio folder> [--port <base port>]"); process.exit(2); }
   const port = valor("--port");
   let srv;
-  const apagar = async () => { if (srv) await srv.close(); process.exit(0); };
+  let pedido = false; // a stop signal that arrived while the server was still starting
+  const apagar = async () => {
+    if (!srv) { pedido = true; return; }
+    await srv.close();
+    process.exit(0);
+  };
+  // Before starting: servidor.json is written during start, so a SIGTERM in that window must still
+  // shut down cleanly and remove it.
+  process.on("SIGTERM", apagar);
+  process.on("SIGINT", apagar);
   try {
     srv = await crearServidor({ studio, port: port === undefined ? undefined : Number(port), onIdle: apagar });
   } catch (err) {
     console.error("servidor: " + err.message);
     process.exit(1);
   }
-  process.on("SIGTERM", apagar);
-  process.on("SIGINT", apagar);
+  if (pedido) await apagar();
   console.log(`UGC Studio gallery on http://127.0.0.1:${srv.port}/ (pid ${process.pid})`);
 }
 

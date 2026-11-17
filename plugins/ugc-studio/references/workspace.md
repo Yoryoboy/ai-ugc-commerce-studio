@@ -304,7 +304,13 @@ studio: until then (a moment, longer in a huge studio) its data answers are `503
   and fails if something already exists at the original path; emptying the trash deletes for good.
   Never write there or delete user work with `rm`: the gallery moves it to the trash. The gallery's
   Papelera view empties it for good (everything, or what is older than 30 days) after asking, and
-  its tab shows how many entries it holds.
+  its tab shows how many entries it holds. Emptying deletes only what the confirmation listed:
+  `POST /api/papelera/vaciar {ids: [<trash entry id>, …]}` deletes exactly those entries that still
+  exist (an id is one entry folder name, `<yyyy-mm-ddTHHMMSSZ>-<rand>`; anything else is rejected)
+  and answers `{eliminados, ids, invalidos, noEncontrados, fallidos}`: what was trashed after the
+  list was drawn survives, and unknown or invalid ids are reported, not fatal. `ids: []` deletes
+  nothing. Without `ids` it deletes everything, or what is before `antesDe`; with both, only the ids
+  that are also before `antesDe`.
 - Cleaning old versions: the action `limpiarVersiones` (gallery: "Limpiar versiones viejas" in the
   detail view and in multi-select, after a dry run that counts the files) moves the files of
   non-current versions of a creative or video to the trash, one ordinary trash entry per file
@@ -316,6 +322,11 @@ studio: until then (a moment, longer in a huge studio) its data answers are `503
   kind. The JSON files are never touched. The dry run is
   `GET /api/versiones-antiguas?ruta=<item path>` → `{ruta, total, files}`; the action is
   `POST /api/acciones {acciones: [{tipo: "limpiarVersiones", ruta}]}` → `{ruta, ok, movidos, ids}`.
+  If a file cannot be moved the result is `ok: false` with `error` and the partial `movidos` / `ids`
+  (restore them with `restaurar` if needed); an unexpected fs error stops the run there and still
+  reports what already moved. In the gallery, a dry run that failed for an item (not the same as
+  0 files) is named in the dialog or message with a hint to retry; "No hay versiones viejas para
+  limpiar." only appears when every dry run answered 0.
 - Reopening: the gallery's "Reabrir" sets `status` of a discarded creative or video back to
   `draft` (the `estado` action).
 - What the gallery reads from the server, besides the JSON files: `/api/elementos` items carry

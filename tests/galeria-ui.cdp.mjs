@@ -4,7 +4,9 @@
 //   node tests/galeria-ui.cdp.mjs [screenshot folder]
 //
 // UGC_PLUGIN=<plugin folder> tests another copy of the plugin (a checkout of an older commit, for
-// the RED run). UGC_CHROMIUM=<binary> picks the browser. Skips (exit 0) without Node 22 or a Chromium.
+// the RED run). UGC_CHROMIUM=<binary> picks the browser. Without Node 22 or a Chromium it prints
+// "SKIPPED: needs Node 22 + Chromium" and exits 0, unless UGC_REQUIRE_UI_TESTS=1 is set (CI, release
+// checks): then the same message goes to stderr and the exit code is 1, so a skip cannot pass as a green run.
 // Headless `--dump-dom` and `--timeout` do not run page timers in real time, so this script talks to
 // a live page instead. Everything it creates lives under os.tmpdir() and is removed at the end.
 
@@ -19,7 +21,13 @@ const PLUGIN = process.env.UGC_PLUGIN ? path.resolve(process.env.UGC_PLUGIN) : p
 const CHROMIUM = process.env.UGC_CHROMIUM
   || ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"].find((b) => spawnSync("sh", ["-c", `command -v ${b}`]).status === 0);
 if (typeof WebSocket === "undefined" || !CHROMIUM) {
-  console.log("skip: needs Node >= 22 (global WebSocket) and a Chromium");
+  const why = [typeof WebSocket === "undefined" ? `Node ${process.versions.node} has no global WebSocket` : null, CHROMIUM ? null : "no Chromium found"].filter(Boolean).join(", ");
+  const msg = `SKIPPED: needs Node 22 + Chromium (${why}); the gallery UI was NOT tested.`;
+  if (process.env.UGC_REQUIRE_UI_TESTS === "1") {
+    console.error(msg + " UGC_REQUIRE_UI_TESTS=1: failing.");
+    process.exit(1);
+  }
+  console.log(msg);
   process.exit(0);
 }
 const { crearServidor } = await import(pathToFileURL(path.join(PLUGIN, "servidor", "servidor.mjs")).href);
@@ -172,7 +180,11 @@ async function login(page) {
 
 let fails = 0;
 const step = async (name, fn) => {
-  try { await fn(); console.log("ok   " + name); } catch (e) { fails++; console.log("FAIL " + name + "\n     " + String(e.message).split("\n")[0]); }
+  try { await fn(); console.log("ok   " + name); } catch (e) {
+    fails++; console.log("FAIL " + name + "\n     " + String(e.message).split("\n")[0]);
+    // A dialog or selection left open by the failed step must not fail the next ones too.
+    try { await page.eval(`(() => { const d = document.getElementById("dialogo"); if (d && !d.hidden) [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Cancelar").click(); state.selection.clear(); return true; })()`); } catch { /* the page is gone */ }
+  }
 };
 const expect = (cond, msg) => { if (!cond) throw new Error(msg); };
 const has = (text, part, what) => expect(String(text).includes(part), `${what}: expected «${part}» in «${String(text).replace(/\s+/g, " ").slice(0, 300)}»`);
@@ -251,6 +263,48 @@ await step("reopen in multi-select: the bar button reopens the discarded ones an
   await page.click("Reabrir", 'document.getElementById("barra")');
   await page.waitFor(`document.getElementById("resultado") && !document.getElementById("resultado").hidden`, "result panel");
   expect(status(`${CR(ids.desc2)}/creativo.json`) === "draft", "bulk reopen on disk");
+});
+
+await step("clean versions: a failed dry run is not 'nothing to clean'; it names the items that could not be checked and the rest is still offered", async () => {
+  const stub = (needle) => page.eval(`(() => { window.__fetch0 = window.__fetch0 || window.fetch;
+    window.fetch = (u, o) => String(u).includes("/api/versiones-antiguas") && String(u).includes(${JSON.stringify(needle)})
+      ? Promise.resolve(new Response(JSON.stringify({ error: "the studio is still being indexed" }), { status: 503, headers: { "Content-Type": "application/json" } }))
+      : window.__fetch0(u, o); return true; })()`);
+  const unstub = () => page.eval(`(() => { if (window.__fetch0) window.fetch = window.__fetch0; return true; })()`);
+  const antes = JSON.stringify([ls(CR(ids.dolor)), ls(CR(ids.carrusel))]);
+  try {
+    await page.hash("#/buscar?tipo=creativo");
+    await page.waitFor(`document.querySelectorAll(".item").length >= 3`, "creatives");
+    await page.pick("Agacharse ya no duele");
+    await page.pick("Carrusel de tres pasos");
+    await page.waitFor(`!document.getElementById("barra").hidden`, "the bar");
+    // One item fails: the dialog offers the other one and says which could not be checked.
+    await stub("x-pasos");
+    await page.click("Limpiar versiones", 'document.getElementById("barra")');
+    await page.waitFor(`!document.getElementById("dialogo").hidden`, "the confirmation");
+    const dlg = await page.text("#dialogo");
+    has(dlg, "2 archivos", "total of the item that could be checked");
+    has(dlg, "Agacharse ya no duele (2 archivos)", "checked item");
+    has(dlg, "No se pudo revisar 1 elemento (Carrusel de tres pasos)", "unchecked item");
+    has(dlg, "Probá de nuevo", "retry hint");
+    await page.shot("07a-limpiar-revision-parcial");
+    await page.click("Cancelar", 'document.getElementById("dialogo")');
+    await page.waitFor(`document.getElementById("dialogo").hidden`, "the dialog to close");
+    // Every dry run fails: no dialog and never "No hay versiones viejas".
+    await unstub();
+    await stub("");
+    await page.click("Limpiar versiones", 'document.getElementById("barra")');
+    await page.waitFor(`document.getElementById("estado").textContent.includes("No se pudo revisar")`, "the could-not-check message");
+    const msg = await page.text("#estado");
+    has(msg, "Agacharse ya no duele", "first unchecked item");
+    has(msg, "Carrusel de tres pasos", "second unchecked item");
+    has(msg, "Probá de nuevo", "retry hint");
+    expect(!msg.includes("No hay versiones viejas"), "a failed dry run was reported as nothing to clean: " + msg);
+    expect(await page.eval(`document.getElementById("dialogo").hidden`), "a dialog opened with nothing known");
+    await page.shot("07b-limpiar-revision-fallida");
+  } finally { await unstub(); }
+  expect(JSON.stringify([ls(CR(ids.dolor)), ls(CR(ids.carrusel))]) === antes, "files changed during dry runs");
+  await page.click("Limpiar selección", 'document.getElementById("barra")');
 });
 
 await step("clean versions (detail): dry run first, confirmation names the file count, cancel changes nothing, confirm moves them", async () => {
@@ -337,6 +391,43 @@ await step("empty trash: the tab shows the count; 30-day and full emptying each 
   expect((await page.text('[data-nav="papelera"]')).trim() === "Papelera", "tab with an empty trash: «" + (await page.text('[data-nav="papelera"]')) + "»");
   expect((await page.eval(`[...document.querySelectorAll("#app button")].filter((b) => b.textContent.startsWith("Vaciar")).length`)) === 0, "empty buttons shown on an empty trash");
   await page.shot("11-papelera-vacia");
+});
+
+await step("empty trash is bound to the confirmed ids: an item trashed while the dialog is open survives, and the request carries the ids", async () => {
+  const total = () => fs.readdirSync(path.join(studio, ".papelera")).length;
+  const LATE = `${CR(ids.dolor)}/9x16-v2.png`; // a single file: trashed after the dialog was drawn
+  const res = await api("/api/acciones", { method: "POST", body: JSON.stringify({ acciones: [{ tipo: "papelera", ruta: CR(ids.desc) }, { tipo: "papelera", ruta: CR(ids.desc2) }] }) });
+  expect(res.resultados.every((r) => r.ok), "could not trash the fixtures: " + JSON.stringify(res));
+  const confirmed = res.resultados.map((r) => r.id).sort();
+  await page.hash("#/papelera");
+  await page.waitFor(`document.querySelectorAll(".row").length === 2`, "2 trash entries");
+  await page.eval(`(() => { window.__vaciar = []; window.__fetch1 = window.fetch;
+    window.fetch = (u, o) => { if (String(u).includes("/api/papelera/vaciar")) window.__vaciar.push(String(o && o.body)); return window.__fetch1(u, o); }; return true; })()`);
+  try {
+    await page.click("Vaciar papelera", "document.getElementById('app')");
+    await page.waitFor(`!document.getElementById("dialogo").hidden`, "the confirmation");
+    has(await page.text("#dialogo"), "2 elementos", "count in the dialog");
+    // This one arrives after the user was shown the list.
+    const late = await api("/api/acciones", { method: "POST", body: JSON.stringify({ acciones: [{ tipo: "papelera", ruta: LATE }] }) });
+    expect(late.resultados[0].ok, "could not trash the late item: " + JSON.stringify(late));
+    expect(total() === 3, "trash entries before confirming: " + total());
+    await page.click("Eliminar 2 elementos", 'document.getElementById("dialogo")');
+    await page.waitFor(`document.getElementById("estado").textContent.includes("Se eliminaron 2 elementos")`, "the result message");
+  } finally { await page.eval(`(() => { if (window.__fetch1) window.fetch = window.__fetch1; return true; })()`); }
+  expect(total() === 1 && disk(`.papelera/${late_id()}`), "only the late entry should be left: " + fs.readdirSync(path.join(studio, ".papelera")));
+  const bodies = await page.eval(`window.__vaciar`);
+  expect(bodies.length === 1, "vaciar requests: " + bodies.length);
+  const sent = JSON.parse(bodies[0]);
+  expect(JSON.stringify([...sent.ids].sort()) === JSON.stringify(confirmed) && !("antesDe" in sent), "the request must carry exactly the confirmed ids: " + bodies[0]);
+  await page.waitFor(`document.querySelectorAll(".row").length === 1`, "the late entry still listed");
+  await page.shot("11b-vaciar-con-ids");
+  // Leave the trash empty for the next steps, through the same button.
+  await page.click("Vaciar papelera", "document.getElementById('app')");
+  await page.waitFor(`!document.getElementById("dialogo").hidden`, "the confirmation for the last entry");
+  await page.click("Eliminar 1 elemento", 'document.getElementById("dialogo")');
+  await page.waitFor(`document.getElementById("app").textContent.includes("La papelera está vacía")`, "the empty trash");
+  expect(total() === 0, "left: " + total());
+  function late_id() { return fs.readdirSync(path.join(studio, ".papelera")).find((d) => d && fs.existsSync(path.join(studio, ".papelera", d, LATE))) || "?"; }
 });
 
 await step("busy refresh: a change that arrives while something is selected is drawn once the selection is cleared", async () => {

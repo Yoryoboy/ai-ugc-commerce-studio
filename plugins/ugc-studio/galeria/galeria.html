@@ -886,15 +886,27 @@ function showResult(def, rows) {
   if (!bad.length) { clearTimeout(showResult.t); showResult.t = setTimeout(() => { if (!panel.classList.contains("fail")) panel.hidden = true; }, 7000); }
 }
 
-// Dry run of "limpiar versiones": asks the server, per item, which files it would move.
+// Dry run of "limpiar versiones": asks the server, per item, which files it would move. An item whose
+// dry run failed (503 while indexing, 404, 5xx) is kept apart in `errores`: that is not "0 files".
 async function previewLimpieza(entries) {
-  const plan = entries.map((e) => ({ entry: e, total: 0 }));
-  await pool(plan.map((p) => async () => {
-    try { p.total = (await api("/api/versiones-antiguas?" + qs({ ruta: p.entry.ruta }))).total; } catch (err) {
+  const plan = [];
+  const errores = [];
+  await pool(entries.map((e) => async () => {
+    try { plan.push({ entry: e, total: (await api("/api/versiones-antiguas?" + qs({ ruta: e.ruta }))).total }); } catch (err) {
       if (err.status === 0 || err.status === 401) throw err;
+      errores.push({ entry: e, error: err.message, status: err.status });
     }
   }), 6);
-  return plan;
+  const orden = new Map(entries.map((e, i) => [e.ruta, i]));
+  plan.sort((a, b) => orden.get(a.entry.ruta) - orden.get(b.entry.ruta));
+  errores.sort((a, b) => orden.get(a.entry.ruta) - orden.get(b.entry.ruta));
+  return { plan, errores };
+}
+
+// "A, B y 2 más" for the items a dry run could not check.
+function nombresFallidos(errores) {
+  const names = errores.map((x) => x.entry.title || x.entry.ruta);
+  return names.slice(0, 3).join(", ") + (names.length > 3 ? " y " + (names.length - 3) + " más" : "");
 }
 
 // Runs one action over entries [{ruta, kind, title, status}] through POST /api/acciones and reports every item.
@@ -904,19 +916,24 @@ async function ejecutar(nombre, entries, opts) {
   if (nombre === "limpiarVersiones") {
     const candidates = entries.filter((e) => def.solo.includes(e.kind));
     let plan = [];
+    let errores = [];
     state.busy = true;
     applyConn();
-    try { plan = await previewLimpieza(candidates); } catch (err) {
+    try { ({ plan, errores } = await previewLimpieza(candidates)); } catch (err) {
       showStatus(errEs(err.message));
       return null;
     } finally { state.busy = false; applyConn(); }
     const withFiles = plan.filter((p) => p.total > 0);
     const total = withFiles.reduce((n, p) => n + p.total, 0);
+    const noRevisados = errores.length
+      ? "No se pudo revisar " + (errores.length === 1 ? "1 elemento" : errores.length + " elementos") + " (" + nombresFallidos(errores) + "): no se limpia" + (errores.length === 1 ? "" : "n") + ". Probá de nuevo en un momento."
+      : "";
+    if (!total && errores.length) { showStatus(noRevisados); return null; }
     if (!total && candidates.length) { showStatus("No hay versiones viejas para limpiar."); return null; }
     if (total) {
       const yes = await confirmar({
         titulo: "¿Mover " + plural(total, "archivo", "archivos") + " de versiones viejas a la papelera?",
-        texto: "Se quedan la versión actual, el video final y los prompts. Lo que se mueve no se borra: se restaura desde la Papelera.",
+        texto: "Se quedan la versión actual, el video final y los prompts. Lo que se mueve no se borra: se restaura desde la Papelera." + (noRevisados ? " " + noRevisados : ""),
         items: withFiles.map((p) => (p.entry.title || p.entry.ruta) + " (" + plural(p.total, "archivo", "archivos") + ")"),
         ok: "Mover " + plural(total, "archivo", "archivos"),
       });
@@ -1442,7 +1459,8 @@ async function viewPapelera(r, my) {
   const nameOf = (e) => (e.originalPath || e.id).split("/").filter(Boolean).pop();
 
   // Empties the trash for good (everything, or what is older than 30 days) through
-  // POST /api/papelera/vaciar, after a confirmation that names how many items go.
+  // POST /api/papelera/vaciar, after a confirmation that names how many items go. It sends the ids of
+  // the entries listed in that confirmation, so what was trashed meanwhile is not deleted.
   async function vaciar(soloViejos) {
     if (state.conn !== "ok" || state.busy) return;
     let fresh;
@@ -1465,8 +1483,11 @@ async function viewPapelera(r, my) {
     state.busy = true;
     applyConn();
     try {
-      const r = await api("/api/papelera/vaciar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(antesDe ? { antesDe } : {}) });
-      showStatus("Se eliminaron " + plural(r.eliminados, "elemento", "elementos") + " de la papelera.");
+      const r = await api("/api/papelera/vaciar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: target.map((e) => e.id) }) });
+      const aparte = (r.noEncontrados || []).length + (r.invalidos || []).length;
+      showStatus("Se eliminaron " + plural(r.eliminados, "elemento", "elementos") + " de la papelera."
+        + (aparte ? " " + plural(aparte, "ya no estaba", "ya no estaban") + "." : "")
+        + ((r.fallidos || []).length ? " No se pudo eliminar " + plural(r.fallidos.length, "elemento", "elementos") + ": probá de nuevo." : ""));
     } catch (err) { showStatus(errEs(err.message)); } finally { state.busy = false; applyConn(); }
     try { await loadEstudio(); } catch (e) { /* banner */ }
     try { await load(); } catch (e) { return; }
