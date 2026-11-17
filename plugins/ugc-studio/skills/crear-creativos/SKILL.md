@@ -70,7 +70,8 @@ Confirm the exact total with `get_cost: true`, show it with the breakdown and as
    `../../../marca/<logo from marca.json>`), then run
    `sh "${CLAUDE_PLUGIN_ROOT}/scripts/componer.sh" <folder>/<slot>-diseno-vN.html`. It prints the
    PNG path (`<slot>-vN.png`). Exit 1: read the message (missing image or logo, broken JSON, no
-   Chrome: tell the user to install Google Chrome); fix and run again. Exit 3: the PNG exists but
+   Chrome: tell the user to install Google Chrome); fix and run again. After exit 1 the previous
+   PNG of that slot stays as it was: never report it as the new render. Exit 3: the PNG exists but
    the text does not fit; shorten it and render again.
 7. **Integrated mode:** read the image and compare the text letter by letter with the quoted text
    (accents, ñ, prices). If it differs, regenerate that slot (never ship it) and say the extra 2.75.

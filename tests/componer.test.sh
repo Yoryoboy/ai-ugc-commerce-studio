@@ -175,8 +175,11 @@ check "failed screenshot: previous PNG kept" "$(cat "$B/f1-v1.png")" "viejo"
 
 cat >"$TMP/chrome-captura-vacia" <<'EOF'
 #!/bin/sh
-for a in "$@"; do case $a in --screenshot=*) : >"${a#--screenshot=}"; exit 0 ;; esac; done
-exec "$REAL_CHROME" "$@"
+for a in "$@"; do case $a in --screenshot=*) shot=${a#--screenshot=} ;; esac; done
+"$REAL_CHROME" "$@"
+code=$?
+[ -n "${shot:-}" ] && : >"$shot"
+exit $code
 EOF
 chmod +x "$TMP/chrome-captura-vacia"
 printf 'viejo' >"$B/f1-v1.png"
@@ -189,26 +192,39 @@ printf 'viejo' >"$B/roto2-v1.png"
 run "$B/roto2-diseno-v1.html"
 check "template error: previous PNG kept" "$(cat "$B/roto2-v1.png")" "viejo"
 
-# --- the state must be the same before and after the screenshot ---------------------------------
-# The second --dump-dom (after the screenshot) is altered by a wrapper, as if the page had built differently.
-cat >"$TMP/chrome-distinto" <<'EOF'
+# --- one browser run per render: the state comes from the run that wrote the PNG ----------------
+# The wrapper counts its starts and, when it takes the screenshot, reports a template error in the DOM
+# it prints while still writing a valid PNG: only the state of that very run can stop the render.
+cat >"$TMP/chrome-una-vez" <<'EOF'
 #!/bin/sh
+echo x >>"$CUENTA"
 case "$*" in
-  *--dump-dom*)
-    n=$(cat "$CUENTA" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" >"$CUENTA"
-    if [ "$n" -ge 2 ]; then "$REAL_CHROME" "$@" | sed 's/data-escala="[^"]*"/data-escala="0.6"/'; exit 0; fi ;;
+  *--screenshot*) "$REAL_CHROME" "$@" | sed 's/data-estado="listo"/data-estado="error" data-error="roto en esta carga"/'; exit 0 ;;
 esac
 exec "$REAL_CHROME" "$@"
 EOF
-chmod +x "$TMP/chrome-distinto"
+chmod +x "$TMP/chrome-una-vez"
 CUENTA="$TMP/cuenta"
 export CUENTA
+: >"$CUENTA"
 printf 'viejo' >"$B/f1-v1.png"
-UGC_CHROME="$TMP/chrome-distinto" run "$B/f1-diseno-v1.html"
-check "state differs between renders: exit 1" "$CODE" "1"
-case $ERR in *"differs"*"escala"*) pass "state differs between renders: says what" ;; *) fail "state differs between renders: says what ($ERR)" ;; esac
-check "state differs between renders: previous PNG kept" "$(cat "$B/f1-v1.png")" "viejo"
-check "state is read before and after the screenshot" "$(cat "$TMP/cuenta")" "2"
+UGC_CHROME="$TMP/chrome-una-vez" run "$B/f1-diseno-v1.html"
+check "state from the screenshot run: exit 1" "$CODE" "1"
+case $ERR in *"the template has an error: roto en esta carga"*) pass "state from the screenshot run: template message" ;; *) fail "state from the screenshot run: template message ($ERR)" ;; esac
+check "state from the screenshot run: previous PNG kept" "$(cat "$B/f1-v1.png")" "viejo"
+check "state from the screenshot run: one browser start" "$(wc -l <"$CUENTA" | tr -d ' ')" "1"
+
+cat >"$TMP/chrome-cuenta" <<'EOF'
+#!/bin/sh
+echo x >>"$CUENTA"
+exec "$REAL_CHROME" "$@"
+EOF
+chmod +x "$TMP/chrome-cuenta"
+: >"$CUENTA"
+UGC_CHROME="$TMP/chrome-cuenta" run "$B/f1-diseno-v1.html"
+check "one browser start per render: exit 0" "$CODE" "0"
+check "one browser start per render: count" "$(wc -l <"$CUENTA" | tr -d ' ')" "1"
+check "one browser start per render: PNG replaced" "$(size "$B/f1-v1.png")" "1080x1350"
 
 # A successful render replaces the old PNG.
 run "$B/f1-diseno-v1.html"
