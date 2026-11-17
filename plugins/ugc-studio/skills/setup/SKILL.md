@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up UGC Studio in the current folder — check the Higgsfield and BI-MCP connectors, create the studio folders and studio.json, and open the local gallery. Use when the user asks to set up, install, configure or repair the studio or its gallery, or when another UGC Studio skill finds no studio.json.
+description: Set up UGC Studio in the current folder — check the Higgsfield and BI-MCP connectors, install the persistent memory (Engram), create the studio folders and studio.json, and open the local gallery. Use when the user asks to set up, install, configure or repair the studio or its gallery, or when another UGC Studio skill finds no studio.json.
 ---
 
 # Set up UGC Studio
@@ -22,6 +22,14 @@ Call both, read-only:
 If a connector is missing or asks to authenticate, stop and tell the user exactly:
 "Falta conectar <nombre> en Claude: Configuración › Conectores › <nombre> › Conectar. Avisame
 cuando esté y sigo." Do not continue without both.
+
+## 1b. Persistent memory (Engram)
+
+The memory is part of the setup: it lets Claude remember decisions, preferences and what worked
+for each product across conversations. Follow the `configurar-memoria` skill
+(`${CLAUDE_PLUGIN_ROOT}/skills/configurar-memoria/SKILL.md`). If it is already installed it only
+verifies. If the user does not want it, or it cannot be installed, say so and go on: the studio
+works without it. Remember whether it was installed now: a new session is needed at the end.
 
 ## 2. Create the studio
 
@@ -60,7 +68,7 @@ sh "${CLAUDE_PLUGIN_ROOT}/scripts/sincronizar.sh" --resumen
 ```
 
 Check that `galeria.html` and `.galeria/datos.js` exist in the studio folder. Then open it for
-the user with `open galeria.html` (UGC Studio supports macOS).
+the user with `open galeria.html` on macOS, or `xdg-open galeria.html` on Linux.
 
 If the files are missing after running the script, tell the user the gallery could not be built
 and give them the exact error; do not continue as if it worked.
@@ -73,6 +81,8 @@ Tell the user, in Spanish and in a few lines:
   folder, or ask "abrí la galería". It updates by itself while Claude works.
 - Always open Claude on this same folder; otherwise it cannot find their actors and videos.
 - Credits available (from step 1).
+- If the memory was installed in this setup: open a new session in this same folder (and, on
+  Mac, quit Claude Desktop with Cmd+Q and open it again) so it starts working.
 - What they can ask next: "Quiero crear un actor", "¿A qué producto le conviene un video?",
   "Quiero crear un video para <producto>", "Haceme creativos para Meta de <producto>". To move work to or from another computer: "Exportá
   …" or "Importá …".
