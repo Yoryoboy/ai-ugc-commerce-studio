@@ -14,24 +14,34 @@ Claude.
 
 ## Qué necesitás
 
-- La **app de escritorio de Claude** en Mac, con la pestaña **Code** (o Claude Code en la
-  terminal, en Mac o Linux).
+- **Claude Code**: la app de escritorio de Claude en Mac, con la pestaña **Code**, o Claude Code
+  en la terminal (Mac o Linux). Es lo único que tenés que instalar vos.
 - Una cuenta de **Higgsfield** con créditos.
 - Acceso a **BI-MCP**. Pedíselo a quien administra los clientes.
-- **Google Chrome** instalado, para los creativos con texto en plantilla (Claude lo usa por
-  detrás, sin abrir ventanas).
 
-El setup también instala **Engram**, la memoria persistente: así Claude se acuerda de lo que
-decidiste y de qué funcionó con cada producto entre una conversación y otra. Se instala solo
-durante el paso 4.
+Todo lo demás lo revisa e instala Claude durante el setup, solo si falta:
+
+| Qué | Para qué |
+|---|---|
+| [Higgsfield](https://higgsfield.ai) (MCP oficial, `https://mcp.higgsfield.ai/mcp`) | Generar imágenes y videos |
+| BI-MCP (`https://bi-mcp-290271124805.us-east4.run.app/mcp`) | Catálogo y ventas de cada cliente |
+| Engram | La memoria persistente: Claude se acuerda de lo que decidiste y de qué funcionó |
+| Google Chrome | Los creativos con texto en plantilla (Claude lo usa por detrás, sin abrir ventanas) |
+| Node y ffmpeg (solo Linux) | Validar los archivos del estudio y las miniaturas de los videos |
+
+El detalle de cómo se revisa e instala cada uno está en
+[`references/dependencias.md`](plugins/ugc-studio/references/dependencias.md).
 
 ## Instalación (una sola vez)
 
 ### 1. Conectar Higgsfield y BI-MCP
 
-1. En Claude, abrí **Configuración › Conectores**.
-2. Buscá **Higgsfield**, tocá **Conectar** e iniciá sesión con tu cuenta de Higgsfield.
-3. Agregá **BI-MCP** con el enlace que te pasaron y conectalo.
+El setup los agrega solo si faltan; después iniciás sesión una vez en cada uno (con `/mcp` en
+Claude Code, o desde **Configuración › Conectores** en la app). Si preferís agregarlos vos en la
+app: **Configuración › Conectores › Agregar conector personalizado**, con estas direcciones:
+
+- Higgsfield: `https://mcp.higgsfield.ai/mcp`
+- BI-MCP: `https://bi-mcp-290271124805.us-east4.run.app/mcp`
 
 ### 2. Crear la carpeta del estudio
 
@@ -73,7 +83,7 @@ Claude Desktop con Cmd+Q y volver a abrirlo).
 
 > **Atajo:** abrí Claude en la carpeta vacía del estudio y pegale "Seteá UGC Studio siguiendo el
 > README de https://github.com/Yoryoboy/ai-ugc-commerce-studio". Hace los pasos 3 y 4 por vos;
-> solo te va a pedir que conectes Higgsfield y BI-MCP y que abras una sesión nueva.
+> solo te va a pedir que abras una sesión nueva e inicies sesión en Higgsfield y BI-MCP.
 
 ## Uso diario
 
@@ -163,11 +173,8 @@ Después cerrá y volvé a abrir la sesión de Code para que tome los cambios.
 Seguí estos pasos en orden y verificá cada uno antes de pasar al siguiente. El usuario
 normalmente no programa: hablale en castellano, simple, y decile en una línea qué hace cada paso.
 
-1. **Requisitos.** Claude Code (la app de escritorio con la pestaña Code en Mac, o la terminal).
-   Mac: no hace falta nada más. Linux: `node`, `ffmpeg` y Chrome o Chromium (para validar los
-   `.json`, las miniaturas y los creativos). Revisá Google Chrome (en Mac,
-   `/Applications/Google Chrome.app`): sin él no salen los creativos con plantilla; avisá si
-   falta, no frena el resto.
+1. **Requisitos.** Solo Claude Code tiene que estar instalado (la app de escritorio con la
+   pestaña Code en Mac, o la terminal). El resto lo revisás e instalás vos en el paso 5.
 2. **Carpeta.** Trabajá en la carpeta que el usuario eligió para el estudio (vacía la primera
    vez). Todas las sesiones tienen que abrirse en esa misma carpeta.
 3. **Plugin.** Instalalo desde la terminal (los comandos `/plugin` del chat los escribe una
@@ -183,13 +190,15 @@ normalmente no programa: hablale en castellano, simple, y decile en una línea q
    [`plugins/ugc-studio/references/engram.md`](plugins/ugc-studio/references/engram.md) (leelo
    desde GitHub: el plugin todavía no está cargado en esta sesión). Si ya está instalado, solo
    verificá.
-5. **Conectores.** La sesión tiene que tener las herramientas de Higgsfield (`balance`) y de
-   BI-MCP (`config_list_profiles`). Si falta alguno, pedile al usuario que lo conecte
-   (Configuración › Conectores en la app; en la terminal, `/mcp`) y esperá. BI-MCP se agrega con
-   el enlace que le pasaron al usuario.
+5. **Dependencias.** Seguí
+   [`plugins/ugc-studio/references/dependencias.md`](plugins/ugc-studio/references/dependencias.md):
+   para cada una (Higgsfield, BI-MCP, Google Chrome y, en Linux, Node y ffmpeg) revisá si ya está
+   y agregala solo si falta. Higgsfield y BI-MCP se agregan con `claude mcp add` y el usuario
+   inicia sesión con `/mcp` en la sesión nueva.
 6. **Sesión nueva.** El plugin y la memoria cargan al abrir una sesión. Pedile al usuario que
    abra una sesión nueva en la misma carpeta (en Mac, que además cierre Claude Desktop con Cmd+Q
-   y lo vuelva a abrir) y que escriba "Configurá el estudio". No podés reiniciarte solo.
+   y lo vuelva a abrir), que inicie sesión en Higgsfield y BI-MCP con `/mcp` si los agregaste, y
+   que escriba "Configurá el estudio". No podés reiniciarte solo.
 7. **Estudio.** En la sesión nueva, la skill `ugc-studio:setup` revisa conectores y memoria y
    crea el estudio. Al terminar tienen que existir `studio.json`, `actores/`, `clientes/`,
    `galeria.html` y `.galeria/datos.js`.
@@ -203,6 +212,7 @@ normalmente no programa: hablale en castellano, simple, y decile en una línea q
 references/workspace.md   el contrato: carpetas, nombres de archivo y campos de cada .json
 skills/                   los flujos (setup, configurar-memoria, crear-actor, crear-video,
                           crear-creativos, transferir); guardan según el contrato
+references/dependencias.md qué necesita el estudio y cómo revisarlo e instalarlo si falta
 references/engram.md      cómo instalar la memoria persistente (Engram); lo sigue el setup
 references/plantillas/    la plantilla HTML de los creativos con texto puesto encima
 hooks/hooks.json          al abrir la sesión y después de cada archivo que escribe Claude,

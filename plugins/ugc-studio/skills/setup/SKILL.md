@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Set up UGC Studio in the current folder — check the Higgsfield and BI-MCP connectors, install the persistent memory (Engram), create the studio folders and studio.json, and open the local gallery. Use when the user asks to set up, install, configure or repair the studio or its gallery, or when another UGC Studio skill finds no studio.json.
+description: Set up UGC Studio in the current folder — check and install what is missing (the Higgsfield and BI-MCP MCP servers, Google Chrome, and on Linux Node and ffmpeg), install the persistent memory (Engram), create the studio folders and studio.json, and open the local gallery. Use when the user asks to set up, install, configure or repair the studio or its gallery, or when another UGC Studio skill finds no studio.json.
 ---
 
 # Set up UGC Studio
@@ -12,16 +12,22 @@ Explain each step in one line and say what they have to do, if anything.
 The workspace layout is defined in `${CLAUDE_PLUGIN_ROOT}/references/workspace.md`. Read it
 first and follow it exactly: the gallery only shows files saved where it says.
 
-## 1. Check the connectors
+## 1. Dependencies
 
-Call both, read-only:
+Follow `${CLAUDE_PLUGIN_ROOT}/references/dependencias.md`: for each item, check whether it is
+already there and install only what is missing (Higgsfield and BI-MCP MCP servers, Google Chrome,
+and on Linux Node and ffmpeg). Engram is step 1b.
+
+Then call both connectors, read-only:
 
 - Higgsfield `balance` (tool `mcp__<higgsfield-segment>__balance`).
 - BI-MCP `config_list_profiles` (tool `mcp__<bimcp-segment>__config_list_profiles`).
 
-If a connector is missing or asks to authenticate, stop and tell the user exactly:
-"Falta conectar <nombre> en Claude: Configuración › Conectores › <nombre> › Conectar. Avisame
-cuando esté y sigo." Do not continue without both.
+If you just added a server, it is not loaded yet: do steps 1b, 2 and 3 now, and at the end ask
+the user to open a new session in this folder, sign in with `/mcp` and say "Configurá el
+estudio" again to finish the check. If a server is there but asks to sign in, tell the user
+exactly: "Falta iniciar sesión en <nombre>: escribí /mcp, elegí <nombre> e iniciá sesión. Avisame
+cuando esté y sigo." Nothing that spends credits or reads client data runs until both answer.
 
 ## 1b. Persistent memory (Engram)
 
