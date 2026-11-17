@@ -65,8 +65,8 @@ validate() {
 }
 
 json_files() {
-  for f in studio.json actores/*/actor.json clientes/*/*/producto.json \
-    clientes/*/*/videos/*/video.json; do
+  for f in studio.json actores/*/actor.json clientes/*/*/producto.json clientes/*/marca/marca.json \
+    clientes/*/*/videos/*/video.json clientes/*/*/creativos/*/creativo.json; do
     [ -f "$f" ] && printf '%s\n' "$f"
   done
 }
@@ -141,10 +141,28 @@ if [ $changed -eq 1 ]; then
       js_files "$d" fotos/
       printf ' },\n'
     done
+    for f in clientes/*/marca/marca.json; do
+      [ -f "$f" ] || continue
+      d=${f%/marca.json}
+      printf '    { "kind": "brand", "path": '; printf '%s' "$d" | js_string; printf ', "json": '
+      js_string "$f"
+      printf ', "files": '
+      js_files "$d"
+      printf ' },\n'
+    done
     for f in clientes/*/*/videos/*/video.json; do
       [ -f "$f" ] || continue
       d=${f%/video.json}
       printf '    { "kind": "video", "path": '; printf '%s' "$d" | js_string; printf ', "json": '
+      js_string "$f"
+      printf ', "files": '
+      js_files "$d"
+      printf ' },\n'
+    done
+    for f in clientes/*/*/creativos/*/creativo.json; do
+      [ -f "$f" ] || continue
+      d=${f%/creativo.json}
+      printf '    { "kind": "creative", "path": '; printf '%s' "$d" | js_string; printf ', "json": '
       js_string "$f"
       printf ', "files": '
       js_files "$d"
@@ -172,8 +190,15 @@ if [ $SUMMARY -eq 0 ]; then
 fi
 
 count() { json_files | grep -c "$1" || true; }
+# status_count <status> [json file name]: videos by default.
 status_count() {
-  grep -l "\"status\"[[:space:]]*:[[:space:]]*\"$1\"" clientes/*/*/videos/*/video.json 2>/dev/null |
+  case ${2:-video.json} in
+    creativo.json) set -- "$1" clientes/*/*/creativos/*/creativo.json ;;
+    *) set -- "$1" clientes/*/*/videos/*/video.json ;;
+  esac
+  s=$1
+  shift
+  grep -l "\"status\"[[:space:]]*:[[:space:]]*\"$s\"" "$@" 2>/dev/null |
     wc -l | tr -d ' '
 }
 
@@ -184,6 +209,10 @@ printf 'Actors: %s. Products: %s. Videos: %s (storyboard %s, draft %s, final %s,
   "$(count '/actor.json')" "$(count '/producto.json')" "$(count '/video.json')" \
   "$(status_count storyboard)" "$(status_count draft)" "$(status_count final)" \
   "$(status_count discarded)"
+printf 'Creatives: %s (draft %s, approved %s, discarded %s). Brand kits: %s.\n' \
+  "$(count '/creativo.json')" "$(status_count draft creativo.json)" \
+  "$(status_count approved creativo.json)" "$(status_count discarded creativo.json)" \
+  "$(count '/marca.json')"
 
 if [ -n "$broken" ]; then
   printf 'Invalid JSON (not shown in the gallery, fix it):\n%s\n' "$broken"
@@ -194,6 +223,13 @@ orphans=$(for d in clientes/*/*/videos/*/; do
 done)
 if [ -n "$orphans" ]; then
   printf 'Video folders without video.json (not shown in the gallery):\n%s\n' "$orphans"
+fi
+
+orphans=$(for d in clientes/*/*/creativos/*/; do
+  [ -d "$d" ] && [ ! -f "${d}creativo.json" ] && printf '%s\n' "${d%/}"
+done)
+if [ -n "$orphans" ]; then
+  printf 'Creative folders without creativo.json (not shown in the gallery):\n%s\n' "$orphans"
 fi
 
 stray=$(find . -path ./actores -prune -o -path ./clientes -prune -o -path ./.galeria -prune -o \
