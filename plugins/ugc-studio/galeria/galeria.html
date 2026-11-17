@@ -108,6 +108,9 @@ a.card:hover { border-color: var(--accent); }
 .piece .shot img { width: 100%; display: block; aspect-ratio: 4 / 5; object-fit: cover; }
 .piece.r9x16 .shot img { aspect-ratio: 9 / 16; }
 .piece.r1x1 .shot img { aspect-ratio: 1 / 1; }
+/* Carousel cards (tarjeta-N) keep their own ratio (1:1 or 4:5): never cropped. */
+.piece.tarjeta .shot img { aspect-ratio: auto; height: auto; object-fit: contain; }
+.creative.carousel .media img { object-fit: contain; }
 .piece .placeholder { aspect-ratio: 4 / 5; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--muted); font-size: 0.85rem; }
 .piece.r9x16 .placeholder { aspect-ratio: 9 / 16; }
 .olds { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); }
@@ -613,7 +616,7 @@ function creativeCard(c) {
     c.actor ? c.actor.name : (c.actorId || "Solo producto"),
     fmtCredits(c.credits) + " cr",
   ].filter(Boolean).join(" · ");
-  return h("a", { class: "card creative", href: "#creativo/" + encodeURIComponent(c.path) },
+  return h("a", { class: "card creative" + (c.type === "carousel" ? " carousel" : ""), href: "#creativo/" + encodeURIComponent(c.path) },
     h("div", { class: "media" },
       c.cover ? h("img", { src: url(c.cover), alt: "", loading: "lazy" }) : h("div", { class: "placeholder" }, "Sin imagen todavía"),
       h("span", { class: "badge" }, c.type === "carousel" ? "Carrusel · " + c.pieces.length : "Estática")),
@@ -647,17 +650,17 @@ function creativesView(m) {
       const p = items[0].product;
       const batches = new Map();
       for (const c of items) {
-        const key = c.batch || "";
+        const key = c.batch ? String(c.batch) : "";
         if (!batches.has(key)) batches.set(key, []);
         batches.get(key).push(c);
       }
-      const ordered = [...batches].sort((a, b) => b[0].localeCompare(a[0]));
+      const ordered = [...batches].sort((a, b) => String(b[0]).localeCompare(String(a[0])));
       return h("div", { class: "group" },
         h("div", { class: "group-head" },
           h("h2", {}, p ? p.title : items[0].productId),
           h("span", { class: "meta" }, [p && p.clientName ? p.clientName : items[0].profileId, plural(items.length, "creativo", "creativos")].join(" · "))),
         ordered.map(([batch, cs]) => {
-          cs.sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")) || a.id.localeCompare(b.id));
+          cs.sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")) || String(a.id).localeCompare(String(b.id)));
           return h("div", { class: "subgroup" },
             h("div", { class: "subhead" },
               h("h3", {}, batch ? "Lote del " + (fmtBatchDay(batch) || batch) : "Sin lote"),
@@ -691,7 +694,7 @@ function creativeDetail(m, path) {
 
   const title = c.title || c.id;
   const piece = (p) => {
-    const ratio = /^\d+x\d+$/.test(p.slot) ? " r" + p.slot : "";
+    const ratio = /^\d+x\d+$/.test(p.slot) ? " r" + p.slot : /^tarjeta-\d+$/.test(p.slot) ? " tarjeta" : "";
     return h("figure", { class: "piece" + ratio, style: "margin:0" },
       p.current
         ? h("a", { class: "shot", href: url(p.current.src), target: "_blank", rel: "noopener", "aria-label": "Abrir " + p.label + " en tamaño real" },

@@ -23,7 +23,14 @@
     precioAnterior oferta: crossed-out previous price
     boton          text of a button drawn on the image ("Comprá ahora"); omit to leave it out
     numero         tarjeta: card number shown in the corner ("1/4")
-    marca          from marca.json: { "colores": {...}, "fuentes": {...}, "logo": "../../../marca/logo.png" }
+    marca          the content of marca.json, as it is: { "colors": { "primary", "accent", "text", "background" },
+                   "fonts": { "heading", "body", "google" }, "logo": "../../../marca/<logo from marca.json>" }
+                   (extra keys such as name or tone are ignored; the logo path is relative to this file;
+                   the Spanish keys "colores" and "fuentes" still work)
+
+  The rendered page reports its state on the body element for scripts/componer.sh: data-estado (listo | error),
+  data-escala (text scale used), data-desborde ("si" when the text does not fit), data-fuentes
+  ("ok" | "fallback": whether the brand fonts really loaded; data-faltan names the missing ones) and data-primary (the primary color used).
 -->
 <script type="application/json" id="datos">
 {
@@ -36,8 +43,8 @@
   "subtitulo": "Patas de madera maciza que se colocan en minutos",
   "boton": "Comprá ahora",
   "marca": {
-    "colores": { "primary": "#0c6b62", "accent": "#f3c623", "text": "#142024", "background": "#ffffff" },
-    "fuentes": { "heading": "Montserrat", "body": "Inter", "google": true },
+    "colors": { "primary": "#0c6b62", "accent": "#f3c623", "text": "#142024", "background": "#ffffff" },
+    "fonts": { "heading": "Montserrat", "body": "Inter", "google": true },
     "logo": null
   }
 }
@@ -136,6 +143,16 @@ body {
       ? '"' + nombre + '", system-ui, -apple-system, "Segoe UI", sans-serif' : null;
   }
 
+  // The brand fonts asked for that are NOT available (not loaded from Google, not installed): a text
+  // drawn with an available font is wider or narrower than the same text in the generic fallbacks.
+  function fuentesFaltantes(nombres) {
+    const ctx = document.createElement("canvas").getContext("2d");
+    const prueba = "Wmqgy@ 0123456789 abcdefghijklmnopqrstuvwxyz";
+    const ancho = (familia, generica) => { ctx.font = '800 64px ' + familia + generica; return ctx.measureText(prueba).width; };
+    return nombres.filter((n, i, a) => fuente(n) && a.indexOf(n) === i).filter((n) =>
+      !["monospace", "serif", "sans-serif"].some((g) => ancho('"' + n + '", ', g) !== ancho("", g)));
+  }
+
   // Shrinks every text (--s) until the block fits its share of the safe area and no word overflows
   // sideways. The text may cover at most 60 % of the safe area (70 % on a panel): more than that
   // hides the image and reads as a wall of text.
@@ -165,8 +182,9 @@ body {
     r.setProperty("--w", f.w + "px");
     r.setProperty("--h", f.h + "px");
     const m = d.marca || {};
-    const c = m.colores || {};
-    const fu = m.fuentes || {};
+    // marca.json keys (colors, fonts); the Spanish ones are still read, the English ones win.
+    const c = { ...(m.colores || {}), ...(m.colors || {}) };
+    const fu = { ...(m.fuentes || {}), ...(m.fonts || {}) };
     const props = {
       "--primary": color(c.primary, "#0c6b62"), "--accent": color(c.accent, "#f3c623"),
       "--ink": color(c.text, "#142024"), "--paper": color(c.background, "#ffffff"),
@@ -176,6 +194,7 @@ body {
     if (fuente(fu.heading)) props["--f-head"] = fuente(fu.heading);
     if (fuente(fu.body)) props["--f-body"] = fuente(fu.body);
     for (const [k, v] of Object.entries(props)) body.style.setProperty(k, v);
+    body.dataset.primary = props["--primary"];
 
     if (fu.google) {
       const fams = [fu.heading, fu.body].filter((n, i, a) => fuente(n) && a.indexOf(n) === i)
@@ -245,7 +264,17 @@ body {
     if (texto(d.boton)) destino.append(el("div", "boton", d.boton));
     if (!destino.childElementCount) return fallar("no hay ningún texto para mostrar");
 
+    // A web font is only fetched when some text uses it: ask for both brand fonts so the check below
+    // does not call "fallback" a font that simply had no text to draw.
+    if (document.fonts && document.fonts.load) {
+      const pedidas = [fu.heading, fu.body].filter((n, i, a) => fuente(n) && a.indexOf(n) === i);
+      await Promise.all(pedidas.flatMap((n) => ["500", "800"].map((w) =>
+        document.fonts.load(w + ' 40px "' + n + '"', "Wmqgy").catch(() => null))));
+    }
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    const faltan = fuentesFaltantes([fu.heading, fu.body]);
+    body.dataset.fuentes = faltan.length ? "fallback" : "ok";
+    if (faltan.length) body.dataset.faltan = faltan.join(", ");
     ajustar(segura, bloque, destino === bloque ? 0.6 : 0.7);
     body.dataset.estado = "listo";
   }

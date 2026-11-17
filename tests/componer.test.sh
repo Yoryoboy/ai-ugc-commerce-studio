@@ -115,5 +115,105 @@ check "too much text: exit 3" "$CODE" "3"
 case $ERR in *"does not fit"*) pass "too much text: says so" ;; *) fail "too much text: says so ($ERR)" ;; esac
 check "too much text: PNG kept to look at" "$(size "$D/largo-v1.png")" "1080x1350"
 
+# --- brand kit: marca.json as it is (English keys), logo, fonts ---------------------------------
+# Helpers that look at the page state the template leaves on <body>.
+eval "$(sed -n '/^find_chrome()/,/^}/p' "$SCRIPT")"
+CHROME=$(find_chrome)
+dom_body() {
+  "$CHROME" --headless=new --disable-gpu --no-first-run --no-default-browser-check \
+    --user-data-dir="$TMP/perfil-test" --hide-scrollbars --window-size=1080,1350 \
+    --virtual-time-budget=10000 --dump-dom "file://$1" 2>/dev/null | grep -o '<body[^>]*>' | head -n 1
+}
+
+B="$TMP/clientes/p/prod/creativos/c1"
+mkdir -p "$B" "$TMP/clientes/p/marca"
+pixel "$B/4x5-base-v1.png"
+pixel "$TMP/clientes/p/marca/logo.png"
+
+design "$B/4x5-diseno-v1.html" '{"formato": "4x5", "diseno": "oferta", "imagen": "4x5-base-v1.png", "titulo": "Marca", "boton": "Comprá", "marca": {"name": "Acme", "colors": {"primary": "#ab12cd", "accent": "#f3c623"}, "fonts": {"google": false}, "logo": "../../../marca/logo.png", "tone": "x"}}'
+run "$B/4x5-diseno-v1.html"
+check "marca.json as is, with logo: exit 0" "$CODE" "0"
+case $(dom_body "$B/4x5-diseno-v1.html") in *'data-primary="#ab12cd"'*) pass "marca.json as is: English colors applied" ;; *) fail "marca.json as is: English colors applied" ;; esac
+
+design "$B/es-diseno-v1.html" '{"formato": "4x5", "diseno": "oferta", "imagen": "4x5-base-v1.png", "titulo": "Marca", "marca": {"colores": {"primary": "#12cd34"}}}'
+case $(dom_body "$B/es-diseno-v1.html") in *'data-primary="#12cd34"'*) pass "Spanish colores still applied" ;; *) fail "Spanish colores still applied" ;; esac
+
+design "$B/sin-diseno-v1.html" '{"formato": "4x5", "diseno": "oferta", "imagen": "4x5-base-v1.png", "titulo": "Marca"}'
+case $(dom_body "$B/sin-diseno-v1.html") in *'data-primary="#0c6b62"'*) pass "no marca: default color" ;; *) fail "no marca: default color" ;; esac
+
+design "$B/logo-diseno-v1.html" '{"formato": "4x5", "diseno": "titular", "imagen": "4x5-base-v1.png", "titulo": "Marca", "marca": {"logo": "../../../marca/no-existe.png"}}'
+run "$B/logo-diseno-v1.html"
+check "missing logo: exit 1" "$CODE" "1"
+case $ERR in *"no encuentro el logo: ../../../marca/no-existe.png"*) pass "missing logo: says which" ;; *) fail "missing logo: says which ($ERR)" ;; esac
+[ -e "$B/logo-v1.png" ] && fail "missing logo: no PNG" || pass "missing logo: no PNG"
+
+# Brand fonts that load: no warning. Brand fonts that do not exist: PNG anyway, warning on stderr.
+design "$B/f1-diseno-v1.html" '{"formato": "4x5", "diseno": "titular", "imagen": "4x5-base-v1.png", "titulo": "Marca", "marca": {"fonts": {"heading": "sans-serif", "body": "serif", "google": false}}}'
+run "$B/f1-diseno-v1.html"
+check "no brand fonts to load: exit 0" "$CODE" "0"
+check "no brand fonts to load: silent" "$ERR" ""
+design "$B/f2-diseno-v1.html" '{"formato": "4x5", "diseno": "titular", "imagen": "4x5-base-v1.png", "titulo": "Marca", "marca": {"fonts": {"heading": "Zzz Fuente Inexistente", "google": false}}}'
+run "$B/f2-diseno-v1.html"
+check "font fallback: exit 0" "$CODE" "0"
+check "font fallback: PNG written" "$(size "$B/f2-v1.png")" "1080x1350"
+case $(dom_body "$B/f2-diseno-v1.html") in *'data-fuentes="fallback"'*) pass "font fallback: reported on the page" ;; *) fail "font fallback: reported on the page" ;; esac
+case $ERR in *"brand font"*"Zzz Fuente Inexistente"*) pass "font fallback: warning on stderr" ;; *) fail "font fallback: warning on stderr ($ERR)" ;; esac
+
+# --- an existing PNG survives a failed render ---------------------------------------------------
+REAL_CHROME=$CHROME
+export REAL_CHROME
+printf 'viejo' >"$B/f1-v1.png"
+cat >"$TMP/chrome-sin-captura" <<'EOF'
+#!/bin/sh
+case "$*" in *--screenshot*) exit 1 ;; esac
+exec "$REAL_CHROME" "$@"
+EOF
+chmod +x "$TMP/chrome-sin-captura"
+UGC_CHROME="$TMP/chrome-sin-captura" run "$B/f1-diseno-v1.html"
+check "failed screenshot: exit 1" "$CODE" "1"
+check "failed screenshot: previous PNG kept" "$(cat "$B/f1-v1.png")" "viejo"
+
+cat >"$TMP/chrome-captura-vacia" <<'EOF'
+#!/bin/sh
+for a in "$@"; do case $a in --screenshot=*) : >"${a#--screenshot=}"; exit 0 ;; esac; done
+exec "$REAL_CHROME" "$@"
+EOF
+chmod +x "$TMP/chrome-captura-vacia"
+printf 'viejo' >"$B/f1-v1.png"
+UGC_CHROME="$TMP/chrome-captura-vacia" run "$B/f1-diseno-v1.html"
+check "empty screenshot: exit 1" "$CODE" "1"
+check "empty screenshot: previous PNG kept" "$(cat "$B/f1-v1.png")" "viejo"
+
+design "$B/roto2-diseno-v1.html" '{"formato": "4x5", "diseno": "titular", "imagen": "falta.png", "titulo": "Hola"}'
+printf 'viejo' >"$B/roto2-v1.png"
+run "$B/roto2-diseno-v1.html"
+check "template error: previous PNG kept" "$(cat "$B/roto2-v1.png")" "viejo"
+
+# --- the state must be the same before and after the screenshot ---------------------------------
+# The second --dump-dom (after the screenshot) is altered by a wrapper, as if the page had built differently.
+cat >"$TMP/chrome-distinto" <<'EOF'
+#!/bin/sh
+case "$*" in
+  *--dump-dom*)
+    n=$(cat "$CUENTA" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" >"$CUENTA"
+    if [ "$n" -ge 2 ]; then "$REAL_CHROME" "$@" | sed 's/data-escala="[^"]*"/data-escala="0.6"/'; exit 0; fi ;;
+esac
+exec "$REAL_CHROME" "$@"
+EOF
+chmod +x "$TMP/chrome-distinto"
+CUENTA="$TMP/cuenta"
+export CUENTA
+printf 'viejo' >"$B/f1-v1.png"
+UGC_CHROME="$TMP/chrome-distinto" run "$B/f1-diseno-v1.html"
+check "state differs between renders: exit 1" "$CODE" "1"
+case $ERR in *"differs"*"escala"*) pass "state differs between renders: says what" ;; *) fail "state differs between renders: says what ($ERR)" ;; esac
+check "state differs between renders: previous PNG kept" "$(cat "$B/f1-v1.png")" "viejo"
+check "state is read before and after the screenshot" "$(cat "$TMP/cuenta")" "2"
+
+# A successful render replaces the old PNG.
+run "$B/f1-diseno-v1.html"
+check "re-render: exit 0" "$CODE" "0"
+check "re-render: PNG replaced" "$(size "$B/f1-v1.png")" "1080x1350"
+
 printf '\n%s\n' "$([ $fails -eq 0 ] && echo 'All checks passed.' || echo "$fails check(s) failed.")"
 [ $fails -eq 0 ]

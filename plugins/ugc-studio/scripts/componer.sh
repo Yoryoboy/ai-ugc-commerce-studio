@@ -65,31 +65,57 @@ trap 'rm -rf "$tmp"' EXIT
 # A profile of its own, so it never touches (or waits for) the Chrome the user has open.
 chrome() {
   "$CHROME" --headless=new --disable-gpu --no-first-run --no-default-browser-check \
-    --user-data-dir="$tmp/perfil" --allow-file-access-from-files --hide-scrollbars \
+    --user-data-dir="$tmp/perfil" --hide-scrollbars \
     --force-device-scale-factor=1 --window-size="$w,$h" --virtual-time-budget=10000 \
     "$@" "$page" 2>"$tmp/chrome.log"
 }
 
-# 1. Let the template build itself and report its state.
-chrome --dump-dom >"$tmp/dom.html" || die "the browser failed: $(tail -n 3 "$tmp/chrome.log")"
-body=$(grep -o '<body[^>]*>' "$tmp/dom.html" | head -n 1)
-case $body in
-  *'data-estado="listo"'*) ;;
-  *'data-estado="error"'*)
-    msg=$(printf '%s' "$body" | sed -n 's/.*data-error="\([^"]*\)".*/\1/p' |
-      sed -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&amp;/\&/g')
-    die "the template has an error: $msg" ;;
-  *) die "the template did not finish building (is it a copy of plantillas/creativo.html?)" ;;
-esac
+# Value of data-<name> in a <body ...> tag ("" when absent).
+attr() { printf '%s' "$1" | sed -n "s/.*[[:space:]]data-$2=\"\([^\"]*\)\".*/\1/p"; }
 
-# 2. Screenshot.
-rm -f "$out"
+# Loads the template, lets it build itself and leaves its <body> tag, which carries its state, in $b.
+# Dies unless the template reached "listo" (not run in a subshell, so die really exits).
+load() {
+  chrome --dump-dom >"$tmp/dom.html" || die "the browser failed: $(tail -n 3 "$tmp/chrome.log")"
+  b=$(grep -a -o '<body[^>]*>' "$tmp/dom.html" | head -n 1)
+  case $b in
+    *'data-estado="listo"'*) ;;
+    *'data-estado="error"'*)
+      msg=$(printf '%s' "$b" | sed -n 's/.*data-error="\([^"]*\)".*/\1/p' |
+        sed -e 's/&quot;/"/g' -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&amp;/\&/g')
+      die "the template has an error: $msg" ;;
+    *) die "the template did not finish building (is it a copy of plantillas/creativo.html?)" ;;
+  esac
+}
+
+# The output PNG is only touched at the very end: a failed render keeps the previous one.
+
+# 1. Load the template and read its state.
+load
+body=$b
+
+# 2. Screenshot (a second load of the page).
 chrome --screenshot="$tmp/shot.png" >/dev/null || die "the browser failed: $(tail -n 3 "$tmp/chrome.log")"
 [ -s "$tmp/shot.png" ] || die "the browser wrote no image: $(tail -n 3 "$tmp/chrome.log")"
 size=$(file "$tmp/shot.png" | sed -n 's/.*PNG image data, \([0-9]*\) x \([0-9]*\).*/\1x\2/p')
 [ "$size" = "${w}x$h" ] || die "the image came out ${size:-unreadable}, expected ${w}x$h"
+
+# 3. Load it once more: the screenshot came from a different load than step 1, so both must have
+#    built the same page (same text scale, same fonts, same overflow) or the PNG cannot be trusted.
+load
+after=$b
+for k in escala fuentes desborde; do
+  [ "$(attr "$body" "$k")" = "$(attr "$after" "$k")" ] ||
+    die "the template differs between two loads ($k: '$(attr "$body" "$k")' then '$(attr "$after" "$k")'); the image was not written, run it again"
+done
+
 mv "$tmp/shot.png" "$out" || die "cannot write $out"
 printf '%s\n' "$out"
+
+if [ "$(attr "$body" fuentes)" = "fallback" ]; then
+  printf 'componer: warning: the brand font did not load (%s); the text uses a fallback font, not the brand one. Check the font name and the connection (Google Fonts), then render again.\n' \
+    "$(attr "$body" faltan)" >&2
+fi
 
 case $body in
   *'data-desborde="si"'*)

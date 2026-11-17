@@ -66,7 +66,8 @@ Confirm the exact total with `get_cost: true`, show it with the breakdown and as
 5. Download the image: `<slot>-base-vN.png` (template mode) or `<slot>-vN.png` (integrated).
 6. **Template mode:** copy `${CLAUDE_PLUGIN_ROOT}/references/plantillas/creativo.html` to
    `<slot>-diseno-vN.html`, edit only the JSON in `<script id="datos">` (fields in its top
-   comment; colors, fonts and logo from `marca.json`, logo path `../../../marca/logo.png`), then run
+   comment; `marca` = the content of `marca.json` as it is, with `logo` as the path
+   `../../../marca/<logo from marca.json>`), then run
    `sh "${CLAUDE_PLUGIN_ROOT}/scripts/componer.sh" <folder>/<slot>-diseno-vN.html`. It prints the
    PNG path (`<slot>-vN.png`). Exit 1: read the message (missing image or logo, broken JSON, no
    Chrome: tell the user to install Google Chrome); fix and run again. Exit 3: the PNG exists but
