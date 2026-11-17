@@ -261,6 +261,34 @@ run "$V" start
 [ "$(state "$V" pid)" != "$PID3" ] && pass "no recorded plugin folder: a new server runs" || fail "no recorded plugin folder: a new server runs"
 run "$V" stop
 
+# An older server whose /api/salud needs the token (it answers 401 to the launcher's probe) is
+# still stopped and replaced, not orphaned next to a new one.
+W=$(new_studio oldsalud)
+mkdir -p "$TMP/oldplugin"
+cat >"$TMP/oldplugin/servidor.mjs" <<'JS'
+import http from "node:http";
+import fs from "node:fs";
+const studio = process.argv[process.argv.indexOf("--studio") + 1];
+const srv = http.createServer((q, r) => { r.writeHead(401); r.end("token required"); });
+srv.listen(0, "127.0.0.1", () => {
+  fs.writeFileSync(studio + "/.galeria/servidor.json", JSON.stringify({ pid: process.pid, port: srv.address().port,
+    token: "x".repeat(64), startedAt: "2026-01-01T00:00:00Z", version: "0.0.1" }, null, 2) + "\n");
+});
+setTimeout(() => process.exit(0), 120000);
+JS
+mkdir -p "$W/.galeria"
+node "$TMP/oldplugin/servidor.mjs" --studio "$W" >/dev/null 2>&1 &
+OLD=$!
+i=0; while [ ! -s "$W/.galeria/servidor.json" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+check "old 401 server set-up: its state is written" "$(state "$W" pid)" "$OLD"
+run "$W" start
+check "old 401 server: start exits 0" "$CODE" "0"
+sleep 0.3
+kill -0 "$OLD" 2>/dev/null && { fail "old 401 server: it is stopped"; kill "$OLD" 2>/dev/null; } || pass "old 401 server: it is stopped"
+[ "$(state "$W" pid)" != "$OLD" ] && pass "old 401 server: a new server runs" || fail "old 401 server: a new server runs"
+check "old 401 server: the new one answers" "$(api "$W" /api/salud | grep -c '"ok":true')" "1"
+run "$W" stop
+
 # --- slow start: the server listens first, the launchers neither fail nor duplicate it -----------
 L=$(new_studio slow)
 export UGC_GALERIA_TEST_SCAN_DELAY_MS=4000

@@ -218,7 +218,9 @@ cmd_start() {
   fi
 
   # A server from another plugin version or folder: stop it (gracefully) and start the current one.
-  if running; then stop_server; fi
+  # Not only when it answers the probe: an older server needs the token for /api/salud (it answers
+  # 401), and it is still ours to stop. stop_server checks the pid is a live servidor.mjs.
+  stop_server || true
   rm -f "$STATE"
   # Detached, in its own process group, so it outlives this shell and its terminal. The pid of
   # what was spawned is kept, to kill it if it never listens.
