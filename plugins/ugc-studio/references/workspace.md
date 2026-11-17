@@ -2,15 +2,18 @@
 
 The studio folder is the only source of truth. The gallery (`galeria.html`) shows whatever is in
 it, so every file must be saved in the place and with the name this contract gives. Never invent
-another layout: a file in the wrong place does not appear in the gallery.
+another layout: a file in the wrong place does not appear in the gallery. The gallery is served by a
+small local server (see "Gallery server, archive and trash"); `galeria.html` only works through it.
 
 ## Layout
 
 ```txt
 <studio>/
 ├── studio.json                     studio settings (see below)
-├── galeria.html                    copied by the plugin hook; never edit
-├── .galeria/datos.js               index rebuilt by the plugin hook; never edit
+├── galeria.html                    copied by the plugin hook; never edit (opened as a file it only
+│                                   says to ask Claude to open the gallery)
+├── .galeria/                       gallery server state; never edit (see Gallery server)
+├── .papelera/                      the gallery's trash: restorable deleted items (see Trash)
 ├── exportaciones/                  packages made by `transferir` (see Packages)
 ├── importaciones/                  packages dropped here to import; optional
 ├── actores/
@@ -264,6 +267,30 @@ product; they share `batch`.
 - A version is one generation round. It lists only the slots it made: changing one card of a
   carousel makes version `N + 1` with just that slot. The current piece of a slot is its file with
   the highest `N`. `credits` is the total of the creative.
+
+## Gallery server, archive and trash
+
+The gallery is a local server, not a file: `sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open`
+starts it if needed and opens it in the browser (`start`, `stop`, `status` and `url` also exist).
+The session hook starts it by itself; it stops after 30 idle minutes (`UGC_GALERIA_IDLE_MIN`). It
+needs Node 18 or newer (`references/dependencias.md`), listens on `127.0.0.1` only and indexes the
+folders in memory, so nothing has to be rebuilt after saving a file. Double-clicking `galeria.html`
+only shows a notice.
+
+- `.galeria/servidor.json`: `{pid, port, token, startedAt, version}`, written by the server (mode
+  600). The token gives access to the gallery: never print it in a message or copy it elsewhere.
+- `.galeria/miniaturas/<sha1>.jpg`: thumbnail cache. It can be deleted at any time; it is rebuilt.
+- `.galeria/validado`, `.galeria/rotos.txt`: state of the hook that validates the `.json` files.
+- `archived` and `archivedAt`: any `actor.json`, `producto.json`, `marca.json`, `video.json` or
+  `creativo.json` may carry `"archived": true` and `"archivedAt": "<ISO date>"`. The gallery hides
+  archived items by default; removing both fields shows the item again. Never remove them
+  yourself unless the user asks to unarchive.
+- `.papelera/<yyyy-mm-ddTHHMMSSZ>-<rand>/<original path>`: what the user deletes from the gallery.
+  An item folder (or one file) is moved there keeping its path, with a `papelera.json` next to it:
+  `{"id": "…", "originalPath": "clientes/acme/MLA1/creativos/2026-11-16-x-y", "trashedAt": "2026-11-17T10:00:00Z", "kind": "folder"}`
+  (`kind` is `folder` or `file`). Anything inside is not in the gallery. Restoring puts it back
+  and fails if something already exists at the original path; emptying the trash deletes for good.
+  Never write there or delete user work with `rm`: the gallery moves it to the trash.
 
 ## Packages
 

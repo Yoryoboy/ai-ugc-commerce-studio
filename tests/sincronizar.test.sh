@@ -3,15 +3,24 @@
 #
 #   sh tests/sincronizar.test.sh
 #
-# Needs Node (to validate JSON and to parse the generated index). Prints one line per check and
-# exits 1 if any fails.
+# Needs Node (to validate JSON and to run the gallery server). Prints one line per check and
+# exits 1 if any fails. The hook starts the gallery server of every studio it runs in, so the
+# studios get their own free port and the servers are stopped at the end.
 
 set -u
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 SCRIPT="$REPO/plugins/ugc-studio/scripts/sincronizar.sh"
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
 export CLAUDE_PLUGIN_ROOT="$REPO/plugins/ugc-studio"
+export UGC_GALERIA_PORT=0 # any free port: never touch a gallery the user may have open
+export UGC_GALERIA_IDLE_MIN=2 # a server that leaks from a failed test stops by itself
+cleanup() {
+  for f in "$TMP"/*/.galeria/servidor.json; do
+    [ -f "$f" ] && CLAUDE_PROJECT_DIR=$(dirname "$(dirname "$f")") sh "$REPO/plugins/ugc-studio/scripts/galeria.sh" stop >/dev/null 2>&1
+  done
+  rm -rf "$TMP"
+}
+trap cleanup EXIT
 
 fails=0
 pass() { printf 'ok   %s\n' "$1"; }
@@ -28,13 +37,19 @@ run() {
   ERR=$(cat "$TMP/err")
 }
 
-# Prints a value from the index: node expression over `e` (window.ESTUDIO).
-index() {
-  node -e 'global.window = {}; require(process.argv[1]); const e = window.ESTUDIO;
-    console.log(eval(process.argv[2]))' "$1/.galeria/datos.js" "$2"
+has() { case $2 in *"$3"*) pass "$1" ;; *) fail "$1 (no [$3] in [$2])" ;; esac; }
+
+# Value of a field of the server state file of a studio.
+state() { sed -n "s/^ *\"$2\": *\"\{0,1\}\([^\",]*\)\"\{0,1\},\{0,1\} *\$/\1/p" "$1/.galeria/servidor.json" | head -n 1; }
+
+# Asks the studio's server (what the gallery shows): node expression `r` over the JSON answer of the path.
+api() {
+  node -e 'fetch("http://127.0.0.1:" + process.argv[1] + process.argv[3], { headers: { "X-UGC-Token": process.argv[2] } })
+    .then((r) => r.json()).then((r) => console.log(eval(process.argv[4])))' \
+    "$(state "$1" port)" "$(state "$1" token)" "$2" "$3"
 }
 
-# Pause so file times differ from the index (some file systems keep whole seconds).
+# Pause so file times differ from the validation marker (some file systems keep whole seconds).
 tick() { sleep 1; }
 
 new_studio() {
@@ -62,10 +77,21 @@ run "$S" --resumen
 check "summary: exit 0" "$CODE" "0"
 case $OUT in *"Actors: 1. Products: 1. Videos: 1 (storyboard 0, draft 1"*) pass "summary: counts" ;; *) fail "summary: counts ($OUT)" ;; esac
 cmp -s "$CLAUDE_PLUGIN_ROOT/galeria/galeria.html" "$S/galeria.html" && pass "gallery copied" || fail "gallery copied"
-check "index: entity kinds" "$(index "$S" 'e.entities.map((x) => x.kind).join(",")')" "actor,product,video"
-check "index: actor files" "$(index "$S" 'e.entities[0].files.join(",")')" "actor.json,retrato.png"
-check "index: product without photos" "$(index "$S" 'e.entities[1].files.join(",")')" "producto.json"
-check "index: studio json" "$(index "$S" 'JSON.parse(e.studio).credits.available')" "10"
+case $OUT in *"Gallery: http://127.0.0.1:"*"/?t="*) pass "summary: gallery URL" ;; *) fail "summary: gallery URL ($OUT)" ;; esac
+[ -e "$S/.galeria/datos.js" ] && fail "no datos.js is built" || pass "no datos.js is built"
+[ -f "$S/.galeria/validado" ] && pass "validation marker written" || fail "validation marker written"
+has "the hook started the gallery server" "$(api "$S" /api/salud 'r.ok + " " + r.entities')" "true 3"
+check "the server shows the same studio" "$(api "$S" '/api/elementos' 'r.items.map((i) => i.kind).sort().join(",")')" "actor,product,video"
+PID1=$(state "$S" pid)
+tick
+run "$S"
+check "hook: exit 0" "$CODE" "0"
+check "hook: the running server is kept" "$(state "$S" pid)" "$PID1"
+
+# An index left by an older version is removed.
+printf 'window.ESTUDIO = {};' >"$S/.galeria/datos.js"
+run "$S"
+[ -e "$S/.galeria/datos.js" ] && fail "old datos.js removed" || pass "old datos.js removed"
 
 # --- file names that need escaping -------------------------------------------------------------
 V="$S/clientes/acme/MLA1/videos/2026-01-01-x-y"
@@ -75,17 +101,28 @@ V="$S/clientes/acme/MLA1/videos/2026-01-01-x-y"
 tick
 run "$S"
 check "odd names: exit 0" "$CODE" "0"
-check "odd names: index parses with every file" \
-  "$(index "$S" 'e.entities[2].files.filter((f) => f.endsWith(".png")).sort().join("|")')" \
-  'barra\invertida.png|comi"lla.png|retorno.png'
 
 # --- unchanged studio --------------------------------------------------------------------------
-before=$(ls -l --time-style=+%s.%N "$S/.galeria/datos.js" 2>/dev/null || ls -lT "$S/.galeria/datos.js")
+before=$(ls -l --time-style=+%s.%N "$S/.galeria/validado" 2>/dev/null || ls -lT "$S/.galeria/validado")
 tick
 run "$S"
-after=$(ls -l --time-style=+%s.%N "$S/.galeria/datos.js" 2>/dev/null || ls -lT "$S/.galeria/datos.js")
+after=$(ls -l --time-style=+%s.%N "$S/.galeria/validado" 2>/dev/null || ls -lT "$S/.galeria/validado")
 check "unchanged: exit 0" "$CODE" "0"
-check "unchanged: index not rebuilt" "$after" "$before"
+check "unchanged: nothing validated again (marker untouched)" "$after" "$before"
+
+# Only the JSON changed since the last check is validated: an old broken file is found by the
+# session summary (every file), not by the hook.
+printf '{"title": ' >"$S/clientes/acme/MLA1/producto.json"
+touch -t 200001010000 "$S/clientes/acme/MLA1/producto.json"
+run "$S"
+check "hook validates only changed files: exit 0" "$CODE" "0"
+run "$S" --resumen
+case $OUT in *"Invalid JSON"*"clientes/acme/MLA1/producto.json:"*) pass "summary validates every file" ;; *) fail "summary validates every file ($OUT)" ;; esac
+printf '{"title": "Producto"}\n' >"$S/clientes/acme/MLA1/producto.json"
+tick
+run "$S"
+check "fixed product: exit 0" "$CODE" "0"
+check "fixed product: broken list empty" "$(cat "$S/.galeria/rotos.txt")" ""
 
 # --- broken JSON keeps being reported until fixed ----------------------------------------------
 A="$S/actores/ana-v1/actor.json"
@@ -95,7 +132,13 @@ printf '{"name": "Ana",}' >"$A"
 run "$S"
 check "broken: exit 2" "$CODE" "2"
 case $ERR in *"actores/ana-v1/actor.json:"*) pass "broken: path reported" ;; *) fail "broken: path reported ($ERR)" ;; esac
-check "broken: still indexed for the gallery notice" "$(index "$S" 'e.entities.filter((x) => x.kind === "actor").length')" "1"
+ok=""
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  ok=$(api "$S" '/api/elementos?tipo=actor' 'r.items.map((i) => i.broken).join(",")')
+  [ "$ok" = true ] && break
+  sleep 0.2
+done
+check "broken: the server keeps the actor, marked broken" "$ok" "true"
 
 tick
 printf '{"title": "Producto 2"}\n' >"$S/clientes/acme/MLA1/producto.json"
@@ -123,12 +166,13 @@ run "$S"
 check "broken file deleted: exit 0" "$CODE" "0"
 check "broken file deleted: list empty" "$(cat "$S/.galeria/rotos.txt")" ""
 
-# --- every build has its own id ----------------------------------------------------------------
-b1=$(index "$S" 'e.build')
+# --- the marker moves on when files change ----------------------------------------------------
+m1=$(ls -l --time-style=+%s.%N "$S/.galeria/validado" 2>/dev/null || ls -lT "$S/.galeria/validado")
+tick
 printf '{"credits": {"available": 11}}\n' >"$S/studio.json"
-run "$S" --resumen
-b2=$(index "$S" 'e.build')
-[ -n "$b1" ] && [ "$b1" != "$b2" ] && pass "build id changes on every build" || fail "build id changes on every build ($b1 / $b2)"
+run "$S"
+m2=$(ls -l --time-style=+%s.%N "$S/.galeria/validado" 2>/dev/null || ls -lT "$S/.galeria/validado")
+[ "$m1" != "$m2" ] && pass "marker moves forward after a change" || fail "marker moves forward after a change"
 
 # --- brand kits and creatives -----------------------------------------------------------------
 C=$(new_studio c)
@@ -146,10 +190,7 @@ check "creatives: summary exit 0" "$CODE" "0"
 case $OUT in *"Actors: 1. Products: 1. Videos: 1 ("*) pass "creatives: video counts unchanged" ;; *) fail "creatives: video counts unchanged ($OUT)" ;; esac
 case $OUT in *"Creatives: 2 (draft 1, approved 1, discarded 0). Brand kits: 1."*) pass "creatives: summary counts" ;; *) fail "creatives: summary counts ($OUT)" ;; esac
 case $OUT in *"Creative folders without creativo.json (not shown in the gallery):"*"creativos/2026-01-02-x-huerfano"*) pass "creatives: orphan folder reported" ;; *) fail "creatives: orphan folder reported ($OUT)" ;; esac
-check "creatives: entity kinds" "$(index "$C" 'e.entities.map((x) => x.kind).join(",")')" "actor,product,brand,video,creative,creative"
-check "creatives: brand path and files" "$(index "$C" 'const b = e.entities.find((x) => x.kind === "brand"); b.path + "|" + b.files.join(",")')" "clientes/acme/marca|logo.png,marca.json"
-check "creatives: creative files" "$(index "$C" 'e.entities.find((x) => x.kind === "creative").files.join(",")')" "4x5-v1.png,creativo.json"
-check "creatives: brand folder is not a product" "$(index "$C" 'e.entities.filter((x) => x.kind === "product").length')" "1"
+check "creatives: the server lists every kind" "$(api "$C" '/api/elementos?archivados=1' 'r.items.map((i) => i.kind).sort().join(",")')" "actor,brand,creative,creative,product,video"
 
 tick
 printf '{"title": "Dolor",' >"$C/clientes/acme/MLA1/creativos/2026-01-02-x-dolor/creativo.json"
@@ -163,6 +204,26 @@ case $ERR in *"clientes/acme/marca/marca.json:"*) pass "creatives: broken marca.
 printf 'old' >"$S/galeria.html"
 run "$S"
 cmp -s "$CLAUDE_PLUGIN_ROOT/galeria/galeria.html" "$S/galeria.html" && pass "outdated gallery replaced" || fail "outdated gallery replaced"
+
+# --- the gallery server is optional for the hook -----------------------------------------------
+# Without a Node 18+ the hook still exits 0 and the summary says why; a failed start is not
+# retried on every tool call.
+BIN="$TMP/bin"
+mkdir -p "$BIN" "$TMP/home"
+for t in sh find grep sed awk sort tr xargs mkdir rm cmp cp mv date head wc uname cat dirname ps curl kill sleep rmdir tail touch ls; do
+  p=$(command -v "$t" 2>/dev/null) && [ -x "$p" ] && ln -sf "$p" "$BIN/$t"
+done
+NN=$(new_studio nonode)
+CLAUDE_PROJECT_DIR=$NN HOME="$TMP/home" PATH="$BIN" sh "$SCRIPT" --resumen >"$TMP/out" 2>"$TMP/err"
+check "no node: summary exit 0" "$?" "0"
+OUT=$(cat "$TMP/out")
+case $OUT in *"Gallery: the server did not start:"*"Node.js 18"*) pass "no node: summary says the gallery is unavailable" ;; *) fail "no node: summary says the gallery is unavailable ($OUT)" ;; esac
+case $OUT in *"Actors: 1."*) pass "no node: counts still printed" ;; *) fail "no node: counts still printed ($OUT)" ;; esac
+[ -f "$NN/.galeria/sin-servidor" ] && pass "no node: failed start remembered" || fail "no node: failed start remembered"
+printf '{"broken",}' >"$NN/actores/ana-v1/actor.json"
+CLAUDE_PROJECT_DIR=$NN HOME="$TMP/home" PATH="$BIN" sh "$SCRIPT" >"$TMP/out" 2>"$TMP/err"
+check "no node, hook after a broken JSON: exit 0 (no validator available)" "$?" "0"
+check "no node: hook output is empty" "$(cat "$TMP/out")" ""
 
 printf '\n%s\n' "$([ $fails -eq 0 ] && echo 'All checks passed.' || echo "$fails check(s) failed.")"
 [ $fails -eq 0 ]

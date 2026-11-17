@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UGC Studio</title>
 <!-- Copied into the studio folder by the ugc-studio plugin. Do not edit the copy: it is replaced
-     when the plugin updates. Data comes from .galeria/datos.js, rebuilt from the folders. -->
+     when the plugin updates. It needs the local gallery server (scripts/galeria.sh), which serves
+     this page and its data (/datos.js) over http; opened as a file it only says how to open it. -->
 <style>
 :root {
   --bg: #f3f5f6; --surface: #ffffff; --sunken: #e8ecee; --line: #d5dcdf;
@@ -157,7 +158,7 @@ a.card:hover { border-color: var(--accent); }
 <main class="wrap" id="app" aria-live="polite">
   <div class="empty">
     <h2>Cargando la galería…</h2>
-    <p class="muted">Si este mensaje no se va, abrí Claude en esta carpeta: arma la galería solo.</p>
+    <p class="muted">Si este mensaje no se va, pedile a Claude: abrí la galería.</p>
   </div>
 </main>
 <!-- Outside #app so the 3 s re-render never wipes the message or the manual-copy panel. -->
@@ -166,7 +167,7 @@ a.card:hover { border-color: var(--accent); }
 <script>
 "use strict";
 
-const DATA_FILE = ".galeria/datos.js";
+const DATA_FILE = "/datos.js"; // served by the gallery server
 const REFRESH_MS = 3000;
 const STATUS = {
   storyboard: "Storyboard por aprobar",
@@ -833,16 +834,23 @@ function load(first) {
     s.remove();
     if (first) {
       document.getElementById("app").replaceChildren(h("div", { class: "empty" },
-        h("h2", {}, "Falta el índice de la galería"),
-        h("p", { class: "muted" }, "Abrí Claude con esta carpeta y la galería se arma sola. Después recargá esta página.")));
+        h("h2", {}, "No llega la información de la galería"),
+        h("p", { class: "muted" }, "Pedile a Claude: abrí la galería.")));
     }
   };
   document.head.append(s);
 }
 
 window.addEventListener("hashchange", () => { render(); window.scrollTo(0, 0); });
-load(true);
-setInterval(() => load(false), REFRESH_MS);
+if (location.protocol === "file:") {
+  // Opened by double-click: there is no server behind this page.
+  document.getElementById("app").replaceChildren(h("div", { class: "empty" },
+    h("h2", {}, "Pedile a Claude: abrí la galería"),
+    h("p", { class: "muted" }, "La galería funciona con un servidor local que Claude enciende por vos. Escribile “abrí la galería” y se abre en el navegador.")));
+} else {
+  load(true);
+  setInterval(() => load(false), REFRESH_MS);
+}
 </script>
 </body>
 </html>

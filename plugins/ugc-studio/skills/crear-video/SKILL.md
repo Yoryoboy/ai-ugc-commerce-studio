@@ -10,7 +10,7 @@ recommend, they pick. Never spend credits without telling them the exact cost fi
 
 Shared files are in `${CLAUDE_PLUGIN_ROOT}/references/`: `claims-rules.md`, `costs.md`, `producto.md`,
 `prompts/ugc-video.md` and `workspace.md`, the contract for where every file goes. Save every
-file exactly where it says: the gallery (`galeria.html`) shows the work from the folders and
+file exactly where it says: the gallery shows the work from the folders and
 updates by itself, so the user can follow along there. Read `studio.json` first; if it is
 missing, run `setup`.
 
@@ -82,7 +82,7 @@ version got every shot right on the first try. Ad Multiplier and `video_edit` di
    script, scene count and the credits spent so far. Save the frames as `escena-1.png` … and a
    side-by-side `storyboard.jpg`. Look at each one yourself; regenerate only the frame that is
    wrong.
-6. Tell the user the storyboard is in the gallery (they can open `galeria.html` or ask you to) and
+6. Tell the user the storyboard is in the gallery (to open it for them run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open`; they can also ask "abrí la galería") and
    ask: **Aprobar** (go to the video) or **Cambiar una escena** (say which; regenerate only that
    one and overwrite its `escena-N.png`).
 

@@ -11,7 +11,10 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 EXPORT="$REPO/plugins/ugc-studio/scripts/exportar.sh"
 IMPORT="$REPO/plugins/ugc-studio/scripts/importar.sh"
 TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+# The gallery sync below starts the gallery server of studio B: give it its own free port and stop it.
+export UGC_GALERIA_PORT=0
+export UGC_GALERIA_IDLE_MIN=2
+trap 'CLAUDE_PROJECT_DIR=$TMP/b sh "$REPO/plugins/ugc-studio/scripts/galeria.sh" stop >/dev/null 2>&1; rm -rf "$TMP"' EXIT
 export CLAUDE_PLUGIN_ROOT="$REPO/plugins/ugc-studio"
 TODAY=$(date +%Y-%m-%d)
 

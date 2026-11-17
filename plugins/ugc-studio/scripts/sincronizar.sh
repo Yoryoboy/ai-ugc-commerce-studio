@@ -1,12 +1,15 @@
 #!/bin/sh
 # Keeps a UGC Studio workspace in sync with its gallery.
 #
-#   sincronizar.sh             copy the gallery if it changed, rebuild the index when files
-#                              changed, and report broken JSON (exit 2, message on stderr)
-#   sincronizar.sh --resumen   the same, then print a summary of the studio for Claude (stdout)
+#   sincronizar.sh             copy the gallery page if it changed, validate the .json files that
+#                              changed (exit 2, message on stderr, if one is broken) and make sure
+#                              the gallery server is running
+#   sincronizar.sh --resumen   the same, validating every file, then print a summary of the studio
+#                              for Claude (stdout), with the gallery URL
 #
 # Runs from the plugin hooks (SessionStart and PostToolUse). Works in the folder given by
 # CLAUDE_PROJECT_DIR, or the current folder. Does nothing outside a studio (no studio.json).
+# The gallery data is not built here: the server (scripts/galeria.sh) indexes the folders itself.
 # Uses only POSIX sh tools that macOS ships with.
 
 set -u
@@ -21,37 +24,18 @@ PLUGIN=${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
 SUMMARY=0
 [ "${1:-}" = "--resumen" ] && SUMMARY=1
 
-INDEX=.galeria/datos.js
+MARKER=.galeria/validado
 BROKEN=.galeria/rotos.txt
+NOSERVER=.galeria/sin-servidor
 mkdir -p .galeria
 
-# 1. Gallery page: keep the studio copy equal to the plugin's.
+# 1. Gallery page: keep the studio copy equal to the plugin's. Opened as a file it only says to
+#    ask Claude for the gallery, which is served by the local server.
 if ! cmp -s "$PLUGIN/galeria/galeria.html" galeria.html 2>/dev/null; then
   cp "$PLUGIN/galeria/galeria.html" galeria.html
 fi
-
-# Prints a file, or stdin, as a JavaScript string literal.
-js_string() {
-  if [ $# -gt 0 ]; then cat "$1"; else cat; fi |
-    tr -d '\r' |
-    sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' |
-    awk 'BEGIN { ORS = ""; print "\"" } NR > 1 { print "\\n" } { print } END { print "\"" }'
-}
-
-# Prints the files of a folder (and of extra subfolders) as a JS array of names.
-# Escapes all names in one pass, so a folder costs the same few processes however many files it has.
-js_files() {
-  dir=$1
-  shift
-  for sub in "" "$@"; do
-    for f in "$dir/$sub"*; do
-      [ -f "$f" ] && printf '%s\n' "${f#"$dir"/}"
-    done
-  done |
-    tr -d '\r' |
-    sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' |
-    awk 'BEGIN { ORS = ""; print "[" } { if (NR > 1) print ","; print "\"" $0 "\"" } END { print "]" }'
-}
+# The index used to be built here; the server keeps it in memory now.
+rm -f .galeria/datos.js
 
 # Validates JSON files with whatever JavaScript runtime the machine has.
 validate() {
@@ -60,48 +44,70 @@ validate() {
     osascript -l JavaScript "$PLUGIN/scripts/validar-json.js" "$@" 2>&1 | grep -v '^$'
   elif command -v node >/dev/null 2>&1; then
     node "$PLUGIN/scripts/validar-json.js" "$@"
+  elif [ -x "$HOME/.ugc-studio/node/bin/node" ]; then
+    "$HOME/.ugc-studio/node/bin/node" "$PLUGIN/scripts/validar-json.js" "$@"
   fi
   return 0
 }
 
-json_files() {
-  for f in studio.json actores/*/actor.json clientes/*/*/producto.json clientes/*/marca/marca.json \
-    clientes/*/*/videos/*/video.json clientes/*/*/creativos/*/creativo.json; do
-    [ -f "$f" ] && printf '%s\n' "$f"
+# Validates the paths on stdin (one per line), a few hundred per run so the argument list stays short.
+validate_paths() {
+  set --
+  n=0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    set -- "$@" "$f"
+    n=$((n + 1))
+    if [ $n -ge 300 ]; then
+      validate "$@"
+      set --
+      n=0
+    fi
   done
+  [ $n -gt 0 ] && validate "$@"
+  return 0
 }
 
-# 2. Index: rebuild only when something in the studio changed after the last build.
-changed=1
-if [ -f "$INDEX" ] && [ $SUMMARY -eq 0 ]; then
-  if [ -z "$(find studio.json actores clientes -newer "$INDEX" 2>/dev/null | head -n 1)" ]; then
-    changed=0
-  fi
-fi
+# Keeps the lines of stdin that are .json files of the studio contract (see references/workspace.md).
+contract_only() {
+  grep -E '^(studio\.json|actores/[^/]+/actor\.json|clientes/[^/]+/[^/]+/producto\.json|clientes/[^/]+/marca/marca\.json|clientes/[^/]+/[^/]+/videos/[^/]+/video\.json|clientes/[^/]+/[^/]+/creativos/[^/]+/creativo\.json)$'
+}
+
+# 2. Validation: every file at session start (or the first time); otherwise only the files changed
+#    since the last check plus the ones still broken, so a broken file keeps being reported until
+#    fixed. One `find` over the studio, however many creatives it has.
+ALL=""
+full=0
+{ [ $SUMMARY -eq 1 ] || [ ! -f "$MARKER" ]; } && full=1
 
 broken=""
-if [ $changed -eq 1 ]; then
-  # Validate every file at session start. Otherwise validate the files changed since the last
-  # build plus the ones still broken last time, so a broken file keeps being reported until fixed.
-  if [ $SUMMARY -eq 1 ] || [ ! -f "$INDEX" ]; then
-    to_check=$(json_files)
+changed=1
+if [ $full -eq 1 ]; then
+  ALL=$(find studio.json actores clientes -type f 2>/dev/null | contract_only)
+  to_check=$ALL
+else
+  newer=$(find studio.json actores clientes -newer "$MARKER" 2>/dev/null)
+  if [ -z "$newer" ]; then
+    changed=0
   else
     to_check=$(
       {
-        json_files | while IFS= read -r f; do
-          [ "$f" -nt "$INDEX" ] && printf '%s\n' "$f"
-        done
-        [ -s "$BROKEN" ] && json_files | grep -xF -f "$BROKEN"
+        printf '%s\n' "$newer" | contract_only
+        if [ -s "$BROKEN" ]; then
+          while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done <"$BROKEN"
+        fi
       } | sort -u
     )
   fi
+fi
+
+if [ $changed -eq 1 ]; then
+  # Taken before validating: a file saved while this runs is checked again next time.
+  newmark="$MARKER.new.$$"
+  : >"$newmark"
   if [ -n "$to_check" ]; then
     # One path per line: folder names never contain newlines.
-    broken=$(printf '%s\n' "$to_check" | {
-      set --
-      while IFS= read -r f; do set -- "$@" "$f"; done
-      validate "$@"
-    })
+    broken=$(printf '%s\n' "$to_check" | validate_paths)
   fi
 
   # Remember which of the checked files are broken. Match each checked path against the start of
@@ -113,71 +119,33 @@ if [ $changed -eq 1 ]; then
          { for (p in paths) if (index($0, p ": ") == 1) print p }' "$checked" - |
     sort -u >"$BROKEN"
   rm -f "$checked"
-
-  tmp="$INDEX.tmp.$$"
-  {
-    printf 'window.ESTUDIO = {\n'
-    # The process id makes two builds in the same second different, so the gallery picks up both.
-    printf '  "generatedAt": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '  "build": "%s-%s",\n' "$(date -u +%s)" "$$"
-    printf '  "studio": '
-    js_string studio.json
-    printf ',\n  "entities": [\n'
-    for f in actores/*/actor.json; do
-      [ -f "$f" ] || continue
-      d=${f%/actor.json}
-      printf '    { "kind": "actor", "path": '; printf '%s' "$d" | js_string; printf ', "json": '
-      js_string "$f"
-      printf ', "files": '
-      js_files "$d"
-      printf ' },\n'
-    done
-    for f in clientes/*/*/producto.json; do
-      [ -f "$f" ] || continue
-      d=${f%/producto.json}
-      printf '    { "kind": "product", "path": '; printf '%s' "$d" | js_string; printf ', "json": '
-      js_string "$f"
-      printf ', "files": '
-      js_files "$d" fotos/
-      printf ' },\n'
-    done
-    for f in clientes/*/marca/marca.json; do
-      [ -f "$f" ] || continue
-      d=${f%/marca.json}
-      printf '    { "kind": "brand", "path": '; printf '%s' "$d" | js_string; printf ', "json": '
-      js_string "$f"
-      printf ', "files": '
-      js_files "$d"
-      printf ' },\n'
-    done
-    for f in clientes/*/*/videos/*/video.json; do
-      [ -f "$f" ] || continue
-      d=${f%/video.json}
-      printf '    { "kind": "video", "path": '; printf '%s' "$d" | js_string; printf ', "json": '
-      js_string "$f"
-      printf ', "files": '
-      js_files "$d"
-      printf ' },\n'
-    done
-    for f in clientes/*/*/creativos/*/creativo.json; do
-      [ -f "$f" ] || continue
-      d=${f%/creativo.json}
-      printf '    { "kind": "creative", "path": '; printf '%s' "$d" | js_string; printf ', "json": '
-      js_string "$f"
-      printf ', "files": '
-      js_files "$d"
-      printf ' },\n'
-    done
-    printf '  ]\n};\n'
-  } >"$tmp" && mv "$tmp" "$INDEX"
+  mv "$newmark" "$MARKER"
 fi
 
-# Nothing changed since the last build: files that were broken then are still broken.
+# Nothing changed since the last check: files that were broken then are still broken.
 if [ $changed -eq 0 ] && [ -s "$BROKEN" ]; then
   broken=$(sed 's/$/: still not valid JSON/' "$BROKEN")
 fi
 
-# 3. Report.
+# 3. The gallery server: start it if it is not running. Never fails the hook (Node may be
+#    missing); after a failed start, PostToolUse waits a minute before trying again.
+GALERIA_URL=""
+GALERIA_NOTE=""
+try_start=1
+if [ $SUMMARY -eq 0 ] && [ -f "$NOSERVER" ] && [ -n "$(find "$NOSERVER" -mmin -1 2>/dev/null)" ]; then
+  try_start=0
+fi
+if [ $try_start -eq 1 ]; then
+  if started=$(CLAUDE_PROJECT_DIR="$ROOT" CLAUDE_PLUGIN_ROOT="$PLUGIN" sh "$PLUGIN/scripts/galeria.sh" start 2>&1); then
+    GALERIA_URL=$started
+    rm -f "$NOSERVER"
+  else
+    GALERIA_NOTE=$started
+    : >"$NOSERVER"
+  fi
+fi
+
+# 4. Report.
 if [ $SUMMARY -eq 0 ]; then
   if [ -n "$broken" ]; then
     {
@@ -189,22 +157,34 @@ if [ $SUMMARY -eq 0 ]; then
   exit 0
 fi
 
-count() { json_files | grep -c "$1" || true; }
+count() { printf '%s\n' "$ALL" | grep -c "$1" || true; }
+# Files by status in one pass: lines "<kind> <status> <count>" for videos and creatives.
+STATUS_COUNTS=$(printf '%s\n' "$ALL" | grep -E '/(video|creativo)\.json$' | tr '\n' '\0' |
+  xargs -0 grep -H -o '"status"[[:space:]]*:[[:space:]]*"[a-z]*"' 2>/dev/null |
+  awk '{
+    f = $0; sub(/:"status".*/, "", f)
+    s = $0; sub(/^.*"status"[[:space:]]*:[[:space:]]*"/, "", s); sub(/".*$/, "", s)
+    key = f SUBSEP s
+    if (key in seen) next
+    seen[key] = 1
+    kind = (f ~ /\/creativo\.json$/) ? "creativo" : "video"
+    n[kind " " s]++
+  } END { for (k in n) print k, n[k] }')
 # status_count <status> [json file name]: videos by default.
 status_count() {
-  case ${2:-video.json} in
-    creativo.json) set -- "$1" clientes/*/*/creativos/*/creativo.json ;;
-    *) set -- "$1" clientes/*/*/videos/*/video.json ;;
-  esac
-  s=$1
-  shift
-  grep -l "\"status\"[[:space:]]*:[[:space:]]*\"$s\"" "$@" 2>/dev/null |
-    wc -l | tr -d ' '
+  kind=video
+  [ "${2:-}" = creativo.json ] && kind=creativo
+  printf '%s\n' "$STATUS_COUNTS" | awk -v k="$kind $1" '{ if ($1 " " $2 == k) { print $3; found = 1 } } END { if (!found) print 0 }'
 }
 
 printf 'UGC Studio workspace: %s\n' "$ROOT"
 printf 'Contract: %s/references/workspace.md (save every file where it says).\n' "$PLUGIN"
-printf 'Gallery: %s/galeria.html (open it with `open galeria.html` on macOS).\n' "$ROOT"
+if [ -n "$GALERIA_URL" ]; then
+  printf 'Gallery: %s (local server; to open it for the user run `sh "%s/scripts/galeria.sh" open`, or ask Claude "abrí la galería").\n' \
+    "$GALERIA_URL" "$PLUGIN"
+else
+  printf 'Gallery: the server did not start: %s\n' "$(printf '%s' "$GALERIA_NOTE" | tr '\n' ' ')"
+fi
 printf 'Actors: %s. Products: %s. Videos: %s (storyboard %s, draft %s, final %s, discarded %s).\n' \
   "$(count '/actor.json')" "$(count '/producto.json')" "$(count '/video.json')" \
   "$(status_count storyboard)" "$(status_count draft)" "$(status_count final)" \
