@@ -2,15 +2,15 @@
 # Starts, stops and opens the local gallery server of a UGC Studio workspace.
 #
 #   galeria.sh start    start the server if it is not running (idempotent, cheap when it is) and
-#                       print its address (without the access token)
+#                       print its address
 #   galeria.sh stop     stop the server
 #   galeria.sh status   say whether it is running (exit 0) or not (exit 1)
-#   galeria.sh url      print the private address WITH the access token, for the user (exit 1 if
-#                       not running). Never paste it into a chat or a message: the token gives
-#                       access to the studio. Claude uses `open` instead.
-#   galeria.sh open     start it if needed and open the gallery in the browser, through
-#                       <studio>/.galeria/abrir.html (mode 600), so the token is never in a
-#                       command line or in any output
+#   galeria.sh url      print the address, http://127.0.0.1:<port>/ (exit 1 if not running)
+#   galeria.sh open     start it if needed and open the address in the browser (open / xdg-open);
+#                       without an opener it prints the address
+#
+# The address needs no access token: it opens with one click. The server accepts only requests
+# from its own page (Host, Sec-Fetch-Site, Origin and JSON checks); see servidor/servidor.mjs.
 #
 # A server of an older plugin version, or of the same version from another plugin folder, is stopped
 # and replaced on start. A server of a newer plugin is kept and used as it is, so two sessions with
@@ -33,7 +33,7 @@ PLUGIN=${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
 STATE=$ROOT/.galeria/servidor.json
 LOG=$ROOT/.galeria/servidor.log
 LOCK=$ROOT/.galeria/arranque.lock
-ABRIR=$ROOT/.galeria/abrir.html
+ABRIR=$ROOT/.galeria/abrir.html # written by 0.5.x launchers; removed on open
 
 # Waits, in tenths of a second. A launcher holding the lock needs at most STOP_TICKS (stopping an
 # old server) plus START_TICKS (waiting for the new one to listen); a waiter only breaks the lock
@@ -64,7 +64,7 @@ alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
 # Is the process ours (a servidor.mjs)? Guards against a reused pid.
 ours() { ps -p "$1" -o command= 2>/dev/null | grep -q 'servidor\.mjs'; }
 
-# health <port>: the answer of GET /api/salud, which needs no token and shows no studio data.
+# health <port>: the answer of GET /api/salud.
 health() {
   if command -v curl >/dev/null 2>&1; then
     curl -fsS -m 2 "http://127.0.0.1:$1/api/salud" 2>/dev/null
@@ -101,10 +101,7 @@ ready() {
   return 1
 }
 
-# The address without the token: safe to print anywhere.
 print_url() { say "http://127.0.0.1:$(field port)/"; }
-# The private address with the token (only `url` and the redirect file use it).
-secret_url() { say "http://127.0.0.1:$(field port)/?t=$(field token)"; }
 
 # plugin_version: version in this plugin's plugin.json (empty if unreadable).
 plugin_version() {
@@ -261,7 +258,7 @@ cmd_start() {
   fi
 
   # A server of an older plugin version or from another folder: stop it (gracefully) and start this one.
-  # Not only when it answers the probe: an older server needs the token for /api/salud (it answers
+  # Not only when it answers the probe: a 0.5.x server needs a token for /api/salud (it answers
   # 401), and it is still ours to stop. stop_server checks the pid is a live servidor.mjs.
   stop_server || true
   rm -f "$STATE"
@@ -313,7 +310,7 @@ cmd_stop() {
 
 cmd_url() {
   if running; then
-    secret_url
+    print_url
   else
     err "The gallery is not running. Start it with: sh $PLUGIN/scripts/galeria.sh start"
     return 1
@@ -329,21 +326,6 @@ cmd_status() {
   fi
 }
 
-# write_redirect: .galeria/abrir.html (mode 600), a page that sends the browser to the private
-# address. The browser is given this file's path, so the token is never in a command line.
-write_redirect() {
-  target=$(secret_url)
-  rm -f "$ABRIR"
-  : >"$ABRIR" && chmod 600 "$ABRIR" || return 1
-  cat >"$ABRIR" <<HTML
-<!doctype html>
-<meta charset="utf-8">
-<meta http-equiv="refresh" content="0;url=$target">
-<title>UGC Studio</title>
-<p>Abriendo la galería… <a href="$target">Si no se abre, hacé clic acá</a>.</p>
-HTML
-}
-
 cmd_open() {
   cmd_start >/dev/null || return 1
   # A server still indexing a big studio shows nothing useful yet: give it a moment (best effort).
@@ -354,13 +336,13 @@ cmd_open() {
     i=$((i + 1))
     sleep 0.1
   done
-  write_redirect || { err "galeria: cannot write $ABRIR"; return 1; }
+  rm -f "$ABRIR" # the redirect page of a 0.5.x launcher, with an old token
   if [ "$(uname)" = Darwin ]; then opener=open; else opener=xdg-open; fi
   if command -v "$opener" >/dev/null 2>&1; then
-    "$opener" "$ABRIR" >/dev/null 2>&1 &
+    "$opener" "$(print_url)" >/dev/null 2>&1 &
     say "The gallery is open in the browser: $(print_url)"
   else
-    say "The gallery is running at $(print_url) . Open this file in the browser: $ABRIR"
+    say "The gallery is running at $(print_url) . Open that address in the browser."
   fi
   return 0
 }
@@ -373,10 +355,10 @@ case ${1:-} in
   open) cmd_open ;;
   *)
     err "usage: galeria.sh start|stop|status|url|open"
-    err "  start   start the server if needed and print its address (no token)"
+    err "  start   start the server if needed and print its address"
     err "  stop    stop the server"
     err "  status  running or stopped"
-    err "  url     the private address WITH the access token, for the user only: never paste it into a chat"
+    err "  url     print the address (http://127.0.0.1:<port>/)"
     err "  open    start the server if needed and open the gallery in the browser"
     exit 2
     ;;

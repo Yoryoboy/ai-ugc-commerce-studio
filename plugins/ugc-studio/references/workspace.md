@@ -272,7 +272,9 @@ product; they share `batch`.
 
 The gallery is a local server, not a file: `sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open`
 starts it if needed and opens it in the browser (`start`, `stop`, `status` and `url` also exist).
-The session hook starts it by itself; it stops after 30 idle minutes (`UGC_GALERIA_IDLE_MIN`). It
+The session start hook starts it by itself (or reuses the one already running), the session end
+hook stops it, and it also stops after 30 idle minutes (`UGC_GALERIA_IDLE_MIN`). Closing any session
+of the studio stops the shared server; another open session starts it again on its next file write. It
 needs Node 18 or newer (`references/dependencias.md`), listens on `127.0.0.1` only and indexes the
 folders in memory, so nothing has to be rebuilt after saving a file. Double-clicking `galeria.html`
 only shows a notice. A server of an older plugin version (or of the same version from another
@@ -282,15 +284,19 @@ do not keep replacing each other's server. The server listens before it has inde
 studio: until then (a moment, longer in a huge studio) its data answers are `503` with
 `Retry-After`, and `/api/salud` says `"listo": false`.
 
-- `.galeria/servidor.json`: `{pid, port, token, startedAt, version, plugin}`, written by the server
-  (mode 600; `plugin` is the plugin folder it runs from). The token gives access to the gallery:
-  never print it, paste it into a chat or copy it elsewhere. `galeria.sh start`, `status` and the
-  hook summary print the address without the token (`http://127.0.0.1:<port>/`); only
-  `galeria.sh url` prints the private address with `?t=<token>`, for the user, never for a chat.
-  To open the gallery, run `galeria.sh open` (or tell the user to ask "abrí la galería"): it opens
-  `.galeria/abrir.html` (mode 600), a tiny page that redirects to the private address, so the token
-  never appears in a command line or in any output. `GET /api/salud` needs no token and answers
-  only `{ok, version, pid, listo}`.
+- `.galeria/servidor.json`: `{pid, port, startedAt, version, plugin}`, written by the server
+  (mode 600; `plugin` is the plugin folder it runs from). There is no access token: the address
+  `http://127.0.0.1:<port>/` opens directly in the browser, and `galeria.sh start`, `status`, `url`
+  and the hook summary print it. To open the gallery, run `galeria.sh open` (or tell the user to ask
+  "abrí la galería"); it opens that address with the system's `open` / `xdg-open`. What protects the
+  server is that it listens on `127.0.0.1` only and checks every request: the `Host` header must be
+  `127.0.0.1:<port>` or `localhost:<port>` (DNS rebinding); a request the browser marks
+  `Sec-Fetch-Site: cross-site` or `same-site` is refused with `403`, except a link followed to `/`
+  itself (a top-level navigation), so a page of another site cannot read or change anything; and a
+  mutation (`POST`) must come from the gallery's own `Origin` and be `application/json`. `/?t=…`
+  (an old bookmark) redirects to `/`. `GET /api/salud` answers `{ok, version, pid, listo, studio,
+  entities, scanMs}`. Trade-off: with no token, any other OS user of the same machine can reach the
+  gallery on that port.
 - `.galeria/miniaturas/<sha1>.jpg`: thumbnail cache. It can be deleted at any time; it is rebuilt.
 - `.galeria/validado`, `.galeria/rotos.txt`: state of the hook that validates the `.json` files.
 - `archived` and `archivedAt`: any `actor.json`, `producto.json`, `marca.json`, `video.json` or

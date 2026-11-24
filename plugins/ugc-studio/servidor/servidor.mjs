@@ -5,7 +5,10 @@
 //
 // Indexes the studio in memory, serves the gallery, the studio files and thumbnails, and applies
 // actions (status, archive, trash, restore). Built-in modules only, Node >= 18. Listens on
-// 127.0.0.1 only; every request needs the token written to <studio>/.galeria/servidor.json.
+// 127.0.0.1 only, with no access token: the address opens with one click. What protects it is, on
+// every request, the Host check (DNS rebinding) and the Sec-Fetch-Site check (a page of another site
+// cannot read or change anything; only a link to "/" may be followed from anywhere), and on POST the
+// Origin and application/json checks. State (pid, port) goes to <studio>/.galeria/servidor.json.
 // Started and stopped by scripts/galeria.sh. See references/workspace.md for the folder contract.
 
 import http from "node:http";
@@ -248,26 +251,21 @@ export async function crearServidor(opts = {}) {
   const version = (() => {
     try { return JSON.parse(fs.readFileSync(path.join(AQUI, "..", ".claude-plugin", "plugin.json"), "utf8")).version || "0"; } catch { return "0"; }
   })();
-  const token = crypto.randomBytes(32).toString("hex");
-  const tokenBuf = Buffer.from(token);
+  const inicio = isoSeg(); // this process's start, recorded in servidor.json to recognise it on close
   const estadoFile = path.join(raiz, ".galeria", "servidor.json");
   const abs = (rel) => path.join(raiz, ...rel.split("/"));
 
   // ----- index -----
   const entidades = new Map(); // path -> entity
   const estructura = new Map(); // folder path -> mtimeMs, folders whose listing the index depends on
-  const idx = { version: 0, build: "", generatedAt: "", sucio: false, studioTexto: "{}", studioData: {}, studioError: null, studioMtime: null, cacheDatos: null, cacheOrden: null };
-  let contador = 0;
+  const idx = { version: 0, sucio: false, studioTexto: "{}", studioData: {}, studioError: null, studioMtime: null, cacheOrden: null };
 
   const marcar = () => { idx.sucio = true; };
   function volcar() {
     if (!idx.sucio) return;
     idx.sucio = false;
     idx.version++;
-    idx.cacheDatos = null;
     idx.cacheOrden = null;
-    idx.generatedAt = isoSeg();
-    idx.build = `${Date.now()}-${++contador}`;
   }
 
   function leerEntidad(kind, rel) {
@@ -469,18 +467,6 @@ export async function crearServidor(opts = {}) {
     }
     return idx.cacheOrden;
   };
-
-  function datosJs() {
-    if (!idx.cacheDatos) {
-      idx.cacheDatos = "window.ESTUDIO = " + JSON.stringify({
-        generatedAt: idx.generatedAt,
-        build: idx.build,
-        studio: idx.studioTexto,
-        entities: ordenadas().map((e) => ({ kind: e.kind, path: e.path, json: e.texto, files: e.files })),
-      }) + ";\n";
-    }
-    return idx.cacheDatos;
-  }
 
   // ----- views of the index -----
   let vistaVersion = -1;
@@ -1033,25 +1019,11 @@ export async function crearServidor(opts = {}) {
   }
 
   // ----- HTTP -----
-  const cookieNombre = "ugc_galeria";
   let puerto = 0;
   const sockets = new Set();
   let idleTimer = null;
   let cerrado = false;
   let listo = false; // the first scan is done
-
-  function tokenValido(v) {
-    if (typeof v !== "string") return false;
-    const b = Buffer.from(v);
-    return b.length === tokenBuf.length && crypto.timingSafeEqual(b, tokenBuf);
-  }
-  function cookieDe(req) {
-    for (const par of String(req.headers.cookie || "").split(";")) {
-      const i = par.indexOf("=");
-      if (i > 0 && par.slice(0, i).trim() === cookieNombre) return par.slice(i + 1).trim();
-    }
-    return null;
-  }
 
   function leerCuerpo(req) {
     return new Promise((resolve, reject) => {
@@ -1076,6 +1048,16 @@ export async function crearServidor(opts = {}) {
     const permitidos = [`127.0.0.1:${puerto}`, `localhost:${puerto}`];
     if (!permitidos.includes(String(req.headers.host || ""))) throw new ErrorHttp(403, "host not allowed");
 
+    // Cross-site guard: browsers say where a request comes from. Anything from another site (or
+    // another origin of this host) is refused, except following a link to the page itself.
+    // Requests without the header (curl, scripts, older browsers) pass.
+    const sitio = req.headers["sec-fetch-site"];
+    if (sitio !== undefined && sitio !== "same-origin" && sitio !== "none") {
+      const navegacion = (req.method === "GET" || req.method === "HEAD") && req.url.split("?")[0] === "/"
+        && req.headers["sec-fetch-mode"] === "navigate" && req.headers["sec-fetch-dest"] === "document";
+      if (!navegacion) throw new ErrorHttp(403, "cross-site request not allowed");
+    }
+
     const crudo = req.url || "/";
     const qi = crudo.indexOf("?");
     const rutaCruda = qi < 0 ? crudo : crudo.slice(0, qi);
@@ -1091,20 +1073,12 @@ export async function crearServidor(opts = {}) {
     }
     const metodo = req.method;
 
-    // Cookie hand-off: GET /?t=<token>
+    // Old bookmarks and the old abrir.html carry ?t=<token>: send them to the plain address.
     if (metodo === "GET" && segs.length === 0 && q.has("t")) {
-      if (!tokenValido(q.get("t"))) throw new ErrorHttp(401, "invalid token");
-      res.writeHead(302, { Location: "/", "Set-Cookie": `${cookieNombre}=${token}; Path=/; HttpOnly; SameSite=Strict`, "Content-Length": 0 });
+      res.writeHead(302, { Location: "/", "Content-Length": 0 });
       res.end();
       return;
     }
-
-    const conToken = tokenValido(req.headers["x-ugc-token"]) || tokenValido(cookieDe(req));
-    // The launcher's health probe: no token, and nothing about the studio.
-    if (!conToken && (metodo === "GET" || metodo === "HEAD") && segs.length === 2 && segs[0] === "api" && segs[1] === "salud") {
-      return enviarJson(res, 200, { ok: true, version, pid: process.pid, listo }, { "Cache-Control": "no-store" });
-    }
-    if (!conToken) throw new ErrorHttp(401, "token required");
 
     if (!["GET", "HEAD", "POST"].includes(metodo)) throw new ErrorHttp(405, "method not allowed");
     let cuerpo;
@@ -1119,7 +1093,7 @@ export async function crearServidor(opts = {}) {
 
     const [a, b] = segs;
     // Until the first scan is done the index is empty: say so instead of answering with partial data.
-    if (!listo && ((a === "api" && !(segs.length === 2 && b === "salud")) || (a === "datos.js" && segs.length === 1))) {
+    if (!listo && a === "api" && !(segs.length === 2 && b === "salud")) {
       throw new ErrorHttp(503, "the studio is still being indexed, retry in 1 second", { "Retry-After": "1" });
     }
     if (a === "api") {
@@ -1158,7 +1132,6 @@ export async function crearServidor(opts = {}) {
       try { html = fs.readFileSync(GALERIA_HTML); } catch { throw new ErrorHttp(500, "galeria.html not found"); }
       return enviar(res, 200, html, "text/html; charset=utf-8", { "Cache-Control": "no-store" });
     }
-    if (a === "datos.js" && segs.length === 1) return enviar(res, 200, datosJs(), "text/javascript; charset=utf-8", { "Cache-Control": "no-store" });
     if (a === "miniatura" && segs.length > 1) return miniatura(req, res, segs.slice(1), q);
     if (ROOTS.has(a) && segs.length > 1) {
       const { real } = resolver(segs);
@@ -1172,11 +1145,8 @@ export async function crearServidor(opts = {}) {
     manejar(req, res).catch((err) => {
       const status = err instanceof ErrorHttp ? err.status : 500;
       if (res.headersSent) { res.destroy(); return; }
-      const nuevo = status === 401 && req.method === "GET" && req.url && !req.url.startsWith("/api/")
-        ? "UGC Studio gallery: access token required. Ask Claude: \"abrí la galería\".\n" : null;
       const cab = { "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store", ...(err instanceof ErrorHttp ? err.cabeceras : {}) };
       try {
-        if (nuevo) { res.writeHead(status, { ...cab, "Content-Type": "text/plain; charset=utf-8" }); res.end(nuevo); return; }
         const cuerpo = JSON.stringify({ error: status === 500 ? "internal error" : err.message });
         res.writeHead(status, { ...cab, "Content-Type": "application/json; charset=utf-8", "Content-Length": Buffer.byteLength(cuerpo) });
         res.end(res.req && res.req.method === "HEAD" ? undefined : cuerpo);
@@ -1242,10 +1212,10 @@ export async function crearServidor(opts = {}) {
   revisor.unref();
 
   // ----- state file, idle shutdown, close -----
-  const url = `http://127.0.0.1:${puerto}/?t=${token}`;
+  const url = `http://127.0.0.1:${puerto}/`;
   fs.mkdirSync(path.dirname(estadoFile), { recursive: true });
   const tmpEstado = `${estadoFile}.tmp-${process.pid}`;
-  fs.writeFileSync(tmpEstado, JSON.stringify({ pid: process.pid, port: puerto, token, startedAt: isoSeg(), version, plugin: pluginRaiz }, null, 2) + "\n", { mode: 0o600 });
+  fs.writeFileSync(tmpEstado, JSON.stringify({ pid: process.pid, port: puerto, startedAt: inicio, version, plugin: pluginRaiz }, null, 2) + "\n", { mode: 0o600 });
   fs.chmodSync(tmpEstado, 0o600);
   fs.renameSync(tmpEstado, estadoFile);
 
@@ -1257,7 +1227,8 @@ export async function crearServidor(opts = {}) {
     for (const t of pendientes.values()) clearTimeout(t);
     if (vigia) { try { vigia.close(); } catch { /* ignore */ } }
     try {
-      if (JSON.parse(fs.readFileSync(estadoFile, "utf8")).token === token) fs.rmSync(estadoFile, { force: true });
+      const estado = JSON.parse(fs.readFileSync(estadoFile, "utf8"));
+      if (estado.pid === process.pid && estado.startedAt === inicio) fs.rmSync(estadoFile, { force: true });
     } catch { /* already gone */ }
     await new Promise((resolve) => {
       server.close(() => resolve());
@@ -1290,7 +1261,7 @@ export async function crearServidor(opts = {}) {
     listo = true;
   });
 
-  return { server, port: puerto, token, url, studio: raiz, close: cerrar, listo: listoPromesa };
+  return { server, port: puerto, url, studio: raiz, close: cerrar, listo: listoPromesa };
 }
 
 // ---------- command line ----------

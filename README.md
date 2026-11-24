@@ -218,7 +218,8 @@ references/dependencias.md qué necesita el estudio y cómo revisarlo e instalar
 references/engram.md      cómo instalar la memoria persistente (Engram); lo sigue el setup
 references/plantillas/    la plantilla HTML de los creativos con texto puesto encima
 hooks/hooks.json          al abrir la sesión y después de cada archivo que escribe Claude,
-                          corre scripts/sincronizar.sh
+                          corre scripts/sincronizar.sh (enciende la galería o usa la que ya
+                          corre); al cerrar la sesión apaga la galería (galeria.sh stop)
 scripts/sincronizar.sh    copia la página de la galería al estudio, valida los .json que cambiaron,
                           enciende el servidor si hace falta; avisa a Claude si un .json está roto
 scripts/galeria.sh        enciende, apaga y abre el servidor local de la galería (start, stop,
@@ -226,12 +227,12 @@ scripts/galeria.sh        enciende, apaga y abre el servidor local de la galerí
                           ~/.ugc-studio/node
 servidor/servidor.mjs     el servidor de la galería (solo módulos de Node): indexa las carpetas en
                           memoria, sirve archivos y miniaturas, y aplica acciones (estado,
-                          archivar, papelera, restaurar); solo escucha en 127.0.0.1 con token
+                          archivar, papelera, restaurar); solo escucha en 127.0.0.1 y no acepta pedidos de otros sitios
 scripts/miniatura.sh      miniatura de un video (ffmpeg, o qlmanage + sips en Mac)
 scripts/componer.sh       pasa una plantilla de creativo a PNG con Google Chrome sin ventana
 scripts/exportar.sh       arma el paquete .zip de exportación con su manifest.json
 scripts/importar.sh       revisa un paquete, muestra qué trae y lo importa sin pisar nada
-galeria/galeria.html      la galería: la sirve el servidor, lee /datos.js y se recarga sola cada 3 segundos
+galeria/galeria.html      la galería: la sirve el servidor, lee su API y se recarga sola cada 3 segundos
 ```
 
 Los hooks se instalan con el plugin y no hacen nada en carpetas que no son un estudio (sin

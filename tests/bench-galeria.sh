@@ -109,10 +109,8 @@ run("sh", [galeria, "stop"]);
 const cold = run("sh", [galeria, "start"]);
 const url = new URL(cold.out.trim());
 const base = `http://127.0.0.1:${url.port}`;
-// `start` prints the address without the token; `url` is the private one.
-const token = new URL(run("sh", [galeria, "url"]).out.trim()).searchParams.get("t");
 const get = async (p) => {
-  const r = await fetch(base + p, { headers: { "X-UGC-Token": token } });
+  const r = await fetch(base + p);
   return r.json();
 };
 // The server listens first and indexes right after: wait for `listo`.
@@ -171,9 +169,5 @@ for (let i = 0; i < 300; i++) {
   if (typeof r.total !== "number") console.log("unexpected answer", r);
 }
 console.log(`GET /api/elementos (n=300, ${consultas.length} query shapes): p50 ${f1(pct(lat, 50))} ms, p95 ${f1(pct(lat, 95))} ms, max ${f1(Math.max(...lat))} ms`);
-const datos = performance.now();
-const d = await fetch(base + "/datos.js", { headers: { "X-UGC-Token": token } });
-const bytes = (await d.arrayBuffer()).byteLength;
-console.log(`GET /datos.js (compatibility, ${(bytes / 1e6).toFixed(1)} MB): ${f1(performance.now() - datos)} ms`);
 process.exit(p95 < objetivo ? 0 : 1);
 EOF

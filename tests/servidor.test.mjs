@@ -11,7 +11,6 @@ import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import net from "node:net";
-import vm from "node:vm";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -122,10 +121,9 @@ after(async () => {
 });
 
 // Raw request: the path is sent as given (no normalization), the Host header can be overridden.
-function req(srv, { method = "GET", path: p = "/", headers = {}, body, auth = true, port } = {}) {
+function req(srv, { method = "GET", path: p = "/", headers = {}, body, port } = {}) {
   return new Promise((resolve, reject) => {
     const h = { ...headers };
-    if (auth && !("X-UGC-Token" in h) && !("Cookie" in h)) h["X-UGC-Token"] = srv.token;
     const r = http.request({ host: "127.0.0.1", port: port || srv.port, method, path: p, headers: h }, (res) => {
       const chunks = [];
       res.on("data", (c) => chunks.push(c));
@@ -171,63 +169,13 @@ async function esperar(fn, ms = 4000) {
 }
 const todos = (s) => fs.readdirSync(s, { recursive: true }).map(String);
 
-// ---------- /datos.js (compatibility with the old index) ----------
+// ---------- the gallery page and the studio files ----------
 
-describe("/datos.js", () => {
-  test("has the shape sincronizar.sh used to build, for the same fixture", async () => {
-    const s = estudioBasico();
-    const srv = await iniciar(s);
-    const r = await req(srv, { path: "/datos.js" });
-    assert.equal(r.status, 200);
-    assert.match(r.headers["content-type"], /javascript/);
-    assert.ok(r.text.startsWith("window.ESTUDIO = "));
-    const ctx = { window: {} };
-    vm.runInNewContext(r.text, ctx);
-    const e = JSON.parse(JSON.stringify(ctx.window.ESTUDIO)); // plain objects of this realm
-    assert.deepEqual(Object.keys(e), ["generatedAt", "build", "studio", "entities"]);
-    assert.match(e.generatedAt, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
-    assert.ok(e.build);
-    assert.equal(e.studio, '{"credits": {"available": 10}}\n');
-    assert.deepEqual(e.entities.map((x) => x.kind), ["actor", "product", "video"]);
-    assert.deepEqual(e.entities[0], {
-      kind: "actor", path: "actores/ana-v1", json: '{"id": "ana-v1", "name": "Ana"}\n', files: ["actor.json", "retrato.png"],
-    });
-    assert.deepEqual(e.entities[1], {
-      kind: "product", path: "clientes/acme/MLA1", json: '{"title": "Producto"}\n', files: ["producto.json"],
-    });
-    assert.equal(e.entities[2].path, "clientes/acme/MLA1/videos/2026-01-01-x-y");
-    assert.deepEqual(e.entities[2].files, ["video.json"]);
-    assert.equal(JSON.parse(e.entities[2].json).status, "draft");
-  });
-
-  test("lists brands and creatives, product photos under fotos/, and odd file names", async () => {
-    const s = estudioRico();
-    write(s, `${C1}/comi"lla.png`, "");
-    write(s, `${C1}/barra\\invertida.png`, "");
-    write(s, `${C1}/.oculto.png`, "");
-    const srv = await iniciar(s);
-    const ctx = { window: {} };
-    vm.runInNewContext((await req(srv, { path: "/datos.js" })).text, ctx);
-    const e = JSON.parse(JSON.stringify(ctx.window.ESTUDIO)); // plain objects of this realm
-    const kinds = e.entities.map((x) => x.kind);
-    assert.deepEqual(kinds, ["actor", "product", "product", "brand", "video", "creative", "creative", "creative"]);
-    const brand = e.entities.find((x) => x.kind === "brand");
-    assert.equal(brand.path, "clientes/acme/marca");
-    assert.deepEqual(brand.files, ["logo.png", "marca.json"]);
-    const prod = e.entities.find((x) => x.path === "clientes/acme/MLA1");
-    assert.deepEqual(prod.files, ["producto.json", "fotos/f1.png", "fotos/f2.png"]);
-    const c1 = e.entities.find((x) => x.path === C1);
-    assert.deepEqual(c1.files, ['4x5-v1.png', '4x5-v2.png', 'barra\\invertida.png', 'comi"lla.png', "creativo.json"]);
-  });
-
-  test("a broken JSON keeps its entity (raw text) and is marked broken in the API", async () => {
+describe("gallery page and studio files", () => {
+  test("a broken JSON keeps its entity and is marked broken in the API", async () => {
     const s = estudioBasico();
     write(s, "actores/ana-v1/actor.json", '{"name": "Ana",}');
     const srv = await iniciar(s);
-    const ctx = { window: {} };
-    vm.runInNewContext((await req(srv, { path: "/datos.js" })).text, ctx);
-    const a = ctx.window.ESTUDIO.entities.find((x) => x.kind === "actor");
-    assert.equal(a.json, '{"name": "Ana",}');
     const items = (await getJson(srv, "/api/elementos?tipo=actor")).items;
     assert.equal(items.length, 1);
     assert.equal(items[0].broken, true);
@@ -281,51 +229,34 @@ describe("/datos.js", () => {
 
 // ---------- security ----------
 
-describe("token, cookie and Host", () => {
-  test("requests without the token are rejected, with it they pass", async () => {
-    const srv = await iniciar(estudioBasico());
-    for (const p of ["/", "/datos.js", "/api/estudio", "/api/elementos", "/api/papelera", "/actores/ana-v1/actor.json"]) {
-      const r = await req(srv, { path: p, auth: false });
-      assert.equal(r.status, 401, p);
-      assert.ok(!r.text.includes("ana-v1") && !r.text.includes("credits"), "no data in " + p);
+describe("no token: Host, Origin, Sec-Fetch-Site and JSON-only mutations", () => {
+  const SF = (site, extra = {}) => ({ "Sec-Fetch-Site": site, ...extra });
+  const NAV = { "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document" };
+  const FILE = "/clientes/acme/MLA1/fotos/f1.png";
+  const THUMB = `/miniatura/${C1}/4x5-v1.png?w=480`;
+
+  test("plain requests, with no token, are served", async () => {
+    const srv = await iniciar(estudioRico());
+    const home = await req(srv, { path: "/" });
+    assert.equal(home.status, 200);
+    assert.match(home.headers["content-type"], /text\/html/);
+    assert.equal(home.headers["set-cookie"], undefined);
+    for (const p of ["/api/estudio", "/api/elementos", "/api/papelera", FILE, THUMB]) {
+      assert.equal((await req(srv, { path: p })).status, 200, p);
     }
-    assert.equal((await req(srv, { path: "/api/estudio", headers: { "X-UGC-Token": "x".repeat(64) } })).status, 401);
-    assert.equal((await req(srv, { path: "/api/estudio", headers: { "X-UGC-Token": "" } })).status, 401);
-    const ok = await req(srv, { path: "/api/salud" });
-    assert.equal(ok.status, 200);
-    const salud = ok.json();
-    assert.equal(salud.ok, true);
-    assert.equal(salud.entities, 3);
-    assert.ok(salud.version);
-    assert.equal(salud.studio, fs.realpathSync(srv.studio));
+    assert.equal(srv.token, undefined);
+    assert.equal(srv.url, `http://127.0.0.1:${srv.port}/`);
   });
 
-  test("the token is random, 32 bytes (64 hex), different on every start", async () => {
-    const s = estudioBasico();
-    const a = await iniciar(s);
-    const b = await iniciar(s);
-    assert.match(a.token, /^[0-9a-f]{64}$/);
-    assert.notEqual(a.token, b.token);
-  });
-
-  test("/?t=<token> sets an HttpOnly SameSite=Strict cookie and redirects to /; the cookie then works", async () => {
+  test("/?t=<anything> redirects to / and sets no cookie; /datos.js is gone", async () => {
     const srv = await iniciar(estudioBasico());
-    const r = await req(srv, { path: "/?t=" + srv.token, auth: false });
-    assert.equal(r.status, 302);
-    assert.equal(r.headers.location, "/");
-    const cookie = [].concat(r.headers["set-cookie"])[0];
-    assert.match(cookie, /HttpOnly/);
-    assert.match(cookie, /SameSite=Strict/);
-    assert.ok(cookie.includes(srv.token));
-    const pair = cookie.split(";")[0];
-    const withCookie = await req(srv, { path: "/api/estudio", auth: false, headers: { Cookie: pair } });
-    assert.equal(withCookie.status, 200);
-    assert.equal((await req(srv, { path: "/api/estudio", auth: false, headers: { Cookie: "ugc_galeria=" + "0".repeat(64) } })).status, 401);
-    const bad = await req(srv, { path: "/?t=" + "0".repeat(64), auth: false });
-    assert.equal(bad.status, 401);
-    assert.equal(bad.headers["set-cookie"], undefined);
-    // The token in the query string is only honored on "/".
-    assert.equal((await req(srv, { path: "/api/estudio?t=" + srv.token, auth: false })).status, 401);
+    for (const t of ["x", "0".repeat(64), ""]) {
+      const r = await req(srv, { path: "/?t=" + t });
+      assert.equal(r.status, 302, t);
+      assert.equal(r.headers.location, "/");
+      assert.equal(r.headers["set-cookie"], undefined);
+    }
+    assert.equal((await req(srv, { path: "/datos.js" })).status, 404);
   });
 
   test("a Host header that is not 127.0.0.1:<port> or localhost:<port> is rejected (DNS rebinding)", async () => {
@@ -337,17 +268,15 @@ describe("token, cookie and Host", () => {
     }
     // No Host header at all (HTTP/1.0 over a raw socket).
     const sinHost = await new Promise((resolve, reject) => {
-      const sock = net.connect(p, "127.0.0.1", () => sock.write(`GET /api/salud HTTP/1.0\r\nX-UGC-Token: ${srv.token}\r\n\r\n`));
+      const sock = net.connect(p, "127.0.0.1", () => sock.write("GET /api/salud HTTP/1.0\r\n\r\n"));
       let out = "";
       sock.on("data", (d) => (out += d));
       sock.on("close", () => resolve(out));
       sock.on("error", reject);
     });
     assert.match(sinHost, /^HTTP\/1\.[01] 403/);
-    // Even the cookie hand-off refuses a foreign Host.
-    const r = await req(srv, { path: "/?t=" + srv.token, auth: false, headers: { Host: "evil.example" } });
-    assert.equal(r.status, 403);
-    assert.equal(r.headers["set-cookie"], undefined);
+    // The redirect of an old bookmark refuses a foreign Host too.
+    assert.equal((await req(srv, { path: "/?t=x", headers: { Host: "evil.example" } })).status, 403);
     assert.equal((await req(srv, { path: "/api/salud", headers: { Host: `localhost:${p}` } })).status, 200);
     assert.equal((await req(srv, { path: "/api/salud", headers: { Host: `127.0.0.1:${p}` } })).status, 200);
   });
@@ -357,17 +286,112 @@ describe("token, cookie and Host", () => {
     assert.equal(srv.server.address().address, "127.0.0.1");
   });
 
-  test("a foreign Origin is rejected on mutations", async () => {
+  test("Sec-Fetch-Site cross-site and same-site are rejected on every kind of request", async () => {
     const s = estudioRico();
     const srv = await iniciar(s);
     const before = fs.readFileSync(path.join(s, `${C1}/creativo.json`), "utf8");
-    const r = await req(srv, {
+    for (const site of ["cross-site", "same-site"]) {
+      for (const p of ["/api/estudio", "/api/salud", "/api/elementos", FILE, THUMB]) {
+        const r = await req(srv, { path: p, headers: SF(site) });
+        assert.equal(r.status, 403, `${site} ${p}`);
+        assert.deepEqual(r.json(), { error: "cross-site request not allowed" }, `${site} ${p}`);
+      }
+      const post = await req(srv, {
+        method: "POST", path: "/api/acciones", headers: SF(site, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ acciones: [{ tipo: "estado", ruta: C1, valor: "approved" }] }),
+      });
+      assert.equal(post.status, 403, `${site} POST`);
+      assert.equal(fs.readFileSync(path.join(s, `${C1}/creativo.json`), "utf8"), before);
+    }
+  });
+
+  test("Sec-Fetch-Site same-origin and none are served; no Sec-Fetch headers pass too", async () => {
+    const srv = await iniciar(estudioRico());
+    for (const site of ["same-origin", "none"]) {
+      for (const p of ["/", "/api/estudio", FILE, THUMB]) {
+        assert.equal((await req(srv, { path: p, headers: SF(site) })).status, 200, `${site} ${p}`);
+      }
+    }
+    assert.equal((await req(srv, { path: "/api/estudio" })).status, 200);
+    const [r] = await accion(srv, [{ tipo: "estado", ruta: C1, valor: "approved" }]);
+    assert.equal(r.ok, true);
+  });
+
+  test("a cross-site top-level navigation to / opens the page; nothing else is allowed that way", async () => {
+    const srv = await iniciar(estudioRico());
+    for (const site of ["cross-site", "same-site"]) {
+      for (const p of ["/", "/?t=old", "/?x=1"]) {
+        const r = await req(srv, { path: p, headers: SF(site, NAV) });
+        assert.equal(r.status, p === "/?t=old" ? 302 : 200, `${site} ${p}`);
+        if (p === "/") assert.match(r.headers["content-type"], /text\/html/);
+      }
+      assert.equal((await req(srv, { method: "HEAD", path: "/", headers: SF(site, NAV) })).status, 200);
+      for (const p of ["/api/estudio", "/api/salud", FILE, THUMB]) {
+        assert.equal((await req(srv, { path: p, headers: SF(site, NAV) })).status, 403, `navigate ${site} ${p}`);
+      }
+      // Not a navigation, or not to a document: still refused on /.
+      assert.equal((await req(srv, { path: "/", headers: SF(site, { "Sec-Fetch-Mode": "no-cors", "Sec-Fetch-Dest": "script" }) })).status, 403);
+      assert.equal((await req(srv, { path: "/", headers: SF(site, { "Sec-Fetch-Mode": "no-cors", "Sec-Fetch-Dest": "image" }) })).status, 403);
+      assert.equal((await req(srv, { path: "/", headers: SF(site, { "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "iframe" }) })).status, 403);
+      assert.equal((await req(srv, { path: "/", headers: SF(site) })).status, 403);
+      // A POST is never a top-level navigation to the page.
+      const post = await req(srv, { method: "POST", path: "/", headers: SF(site, { ...NAV, "Content-Type": "application/json" }), body: "{}" });
+      assert.equal(post.status, 403);
+    }
+    // The old-bookmark redirect works from a link clicked anywhere, without a cookie.
+    const old = await req(srv, { path: "/?t=old", headers: SF("cross-site", NAV) });
+    assert.equal(old.status, 302);
+    assert.equal(old.headers.location, "/");
+    assert.equal(old.headers["set-cookie"], undefined);
+  });
+
+  test("a foreign or null Origin is rejected on mutations; the right one passes", async () => {
+    const s = estudioRico();
+    const srv = await iniciar(s);
+    const file = path.join(s, `${C1}/creativo.json`);
+    const before = fs.readFileSync(file, "utf8");
+    const post = (origin) => req(srv, {
       method: "POST", path: "/api/acciones",
-      headers: { "Content-Type": "application/json", Origin: "http://evil.example" },
+      headers: { "Content-Type": "application/json", ...(origin === undefined ? {} : { Origin: origin }) },
       body: JSON.stringify({ acciones: [{ tipo: "estado", ruta: C1, valor: "approved" }] }),
     });
-    assert.equal(r.status, 403);
+    for (const o of ["http://evil.example", "null", `http://127.0.0.1:${srv.port + 1}`, `https://127.0.0.1:${srv.port}`, `http://127.0.0.1.evil.example:${srv.port}`]) {
+      const r = await post(o);
+      assert.equal(r.status, 403, o);
+      assert.equal(fs.readFileSync(file, "utf8"), before, o);
+    }
+    for (const o of [`http://127.0.0.1:${srv.port}`, `http://localhost:${srv.port}`]) {
+      const r = await post(o);
+      assert.equal(r.status, 200, o);
+      assert.equal(r.json().resultados[0].ok, true);
+      await accion(srv, [{ tipo: "estado", ruta: C1, valor: "draft" }]);
+    }
+    assert.equal((await post(undefined)).status, 200, "no Origin (curl, scripts) passes");
+    assert.equal(leer(s, `${C1}/creativo.json`).status, "approved");
+  });
+
+  test("Host variants, a trailing-slash Origin, framing destinations and CORS/framing headers", async () => {
+    const s = estudioRico();
+    const srv = await iniciar(s);
+    for (const h of [`localhost.:${srv.port}`, `LOCALHOST:${srv.port}`, `[::1]:${srv.port}`, `127.1:${srv.port}`]) {
+      assert.equal((await req(srv, { path: "/api/estudio", headers: { Host: h } })).status, 403, h);
+    }
+    const nav = { "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate" };
+    for (const d of ["embed", "object", "frame", "iframe"]) {
+      assert.equal((await req(srv, { path: "/", headers: { ...nav, "Sec-Fetch-Dest": d } })).status, 403, d);
+    }
+    assert.equal((await req(srv, { path: "//", headers: { ...nav, "Sec-Fetch-Dest": "document" } })).status, 403);
+    const before = fs.readFileSync(path.join(s, `${C1}/creativo.json`), "utf8");
+    const p = await req(srv, {
+      method: "POST", path: "/api/acciones",
+      headers: { "Content-Type": "application/json", Origin: `http://127.0.0.1:${srv.port}/` },
+      body: JSON.stringify({ acciones: [{ tipo: "estado", ruta: C1, valor: "approved" }] }),
+    });
+    assert.equal(p.status, 403);
     assert.equal(fs.readFileSync(path.join(s, `${C1}/creativo.json`), "utf8"), before);
+    const page = await req(srv, { path: "/" });
+    assert.equal(page.headers["x-frame-options"], "DENY");
+    assert.equal(page.headers["access-control-allow-origin"], undefined);
   });
 });
 
@@ -422,7 +446,7 @@ describe("path traversal", () => {
     for (const p of bad) {
       const r = await req(srv, { path: p });
       assert.ok([400, 403, 404].includes(r.status), `${p} -> ${r.status}`);
-      assert.ok(!r.text.includes("SECRETO") && !r.text.includes("available") && !r.text.includes(srv.token), p);
+      assert.ok(!r.text.includes("SECRETO") && !r.text.includes("available"), p);
     }
     for (const p of ["/miniatura/../studio.json", "/miniatura/%2e%2e/studio.json"]) {
       const r = await req(srv, { path: p });
@@ -1060,7 +1084,7 @@ describe("limpiarVersiones", () => {
     assert.deepEqual(await getJson(srv, DRY(C2)), { ruta: C2, total: 0, files: [] });
   });
 
-  test("dry run errors: not an item (404), not a creative or video (400), bad path (400), no token (401), POST not allowed", async () => {
+  test("dry run errors: not an item (404), not a creative or video (400), bad path (400), POST not allowed", async () => {
     const srv = await iniciar(estudioConVersiones());
     assert.equal((await req(srv, { path: DRY("clientes/acme/nada") })).status, 404);
     assert.equal((await req(srv, { path: DRY("actores/ana-v1") })).status, 400);
@@ -1068,7 +1092,6 @@ describe("limpiarVersiones", () => {
     assert.equal((await req(srv, { path: DRY("../etc") })).status, 400);
     assert.equal((await req(srv, { path: DRY("/etc") })).status, 400);
     assert.equal((await req(srv, { path: "/api/versiones-antiguas" })).status, 400);
-    assert.equal((await req(srv, { path: DRY(V1), auth: false })).status, 401);
     const post = await req(srv, { method: "POST", path: DRY(V1), headers: { "Content-Type": "application/json" }, body: "{}" });
     assert.equal(post.status, 404, "like any other GET-only route");
   });
@@ -1281,20 +1304,6 @@ describe("index freshness", () => {
     write(s, `${Q}/fotos/nueva.png`, PNG);
     await esperar(async () => (await getJson(srv, `/api/elemento?ruta=${encodeURIComponent(Q)}`)).photos.length === 1);
   });
-
-  test("/datos.js changes its build id when the index changes", async () => {
-    const s = estudioRico();
-    const srv = await iniciar(s);
-    const build = async () => {
-      const ctx = { window: {} };
-      vm.runInNewContext((await req(srv, { path: "/datos.js" })).text, ctx);
-      return ctx.window.ESTUDIO.build;
-    };
-    const b1 = await build();
-    assert.equal(await build(), b1, "stable while nothing changes");
-    await accion(srv, [{ tipo: "estado", ruta: C1, valor: "approved" }]);
-    assert.notEqual(await build(), b1);
-  });
 });
 
 // ---------- thumbnails ----------
@@ -1312,7 +1321,6 @@ describe("thumbnails", () => {
     assert.equal(v.text, "0123456789abcdefghij");
     assert.equal((await req(srv, { path: `/miniatura/${C1}/nada.png?w=480` })).status, 404);
     assert.equal((await req(srv, { path: `/miniatura/${C1}/4x5-v1.png?w=500` })).status, 400);
-    assert.equal((await req(srv, { path: `/miniatura/${C1}/4x5-v1.png`, auth: false })).status, 401);
     assert.equal(fs.existsSync(path.join(srv.studio, ".galeria", "miniaturas")) && fs.readdirSync(path.join(srv.studio, ".galeria", "miniaturas")).length, false);
   });
 
@@ -1355,24 +1363,23 @@ function lanzar(studio, env = {}) {
 }
 
 describe("health and slow start", () => {
-  test("GET /api/salud answers without a token, with only {ok, version, pid, listo}", async () => {
+  test("GET /api/salud answers its full shape {ok, version, pid, listo, studio, entities, scanMs}", async () => {
     const srv = await iniciar(estudioRico());
-    const r = await req(srv, { path: "/api/salud", auth: false });
+    const r = await req(srv, { path: "/api/salud" });
     assert.equal(r.status, 200);
-    assert.deepEqual(Object.keys(r.json()).sort(), ["listo", "ok", "pid", "version"]);
-    assert.deepEqual({ ...r.json(), version: "x" }, { ok: true, version: "x", pid: process.pid, listo: true });
-    assert.equal(r.json().version, JSON.parse(fs.readFileSync(path.join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8")).version);
-    assert.ok(!r.text.includes(srv.studio), "no studio path");
-    // The Host check still applies; every other API path still needs the token.
-    assert.equal((await req(srv, { path: "/api/salud", auth: false, headers: { Host: "evil.example" } })).status, 403);
-    assert.equal((await req(srv, { path: "/api/estudio", auth: false })).status, 401);
-    assert.equal((await req(srv, { path: "/api/salud?x=1", auth: false })).status, 200);
-    // With the token it keeps the details the tools use.
-    const con = await getJson(srv, "/api/salud");
-    assert.equal(con.ok, true);
-    assert.equal(con.listo, true);
-    assert.equal(con.entities, 8);
-    assert.equal(con.studio, srv.studio);
+    assert.deepEqual(Object.keys(r.json()).sort(), ["entities", "listo", "ok", "pid", "scanMs", "studio", "version"]);
+    const j = r.json();
+    assert.equal(j.ok, true);
+    assert.equal(j.pid, process.pid);
+    assert.equal(j.listo, true);
+    assert.equal(j.entities, 8);
+    assert.equal(j.studio, srv.studio);
+    assert.equal(typeof j.scanMs, "number");
+    assert.equal(j.version, JSON.parse(fs.readFileSync(path.join(PLUGIN, ".claude-plugin", "plugin.json"), "utf8")).version);
+    // The Host check still applies.
+    assert.equal((await req(srv, { path: "/api/salud", headers: { Host: "evil.example" } })).status, 403);
+    assert.equal((await req(srv, { path: "/api/salud?x=1" })).status, 200);
+    assert.equal((await req(srv, { method: "HEAD", path: "/api/salud" })).status, 200);
   });
 
   test("servidor.json records the plugin root the server runs from", async () => {
@@ -1388,10 +1395,10 @@ describe("health and slow start", () => {
     const s = estudioRico();
     const srv = await iniciar(s, { scanDelayMs: 700, sinEsperar: true });
     assert.ok(fs.existsSync(path.join(s, ".galeria", "servidor.json")), "servidor.json written before the scan");
-    const salud = await req(srv, { path: "/api/salud", auth: false });
+    const salud = await req(srv, { path: "/api/salud" });
     assert.equal(salud.json().listo, false);
     assert.equal(salud.json().ok, true);
-    for (const p of ["/api/elementos", "/api/estudio", "/api/papelera", `/api/elemento?ruta=${encodeURIComponent(C1)}`, "/datos.js"]) {
+    for (const p of ["/api/elementos", "/api/estudio", "/api/papelera", `/api/elemento?ruta=${encodeURIComponent(C1)}`]) {
       const r = await req(srv, { path: p });
       assert.equal(r.status, 503, p);
       assert.equal(r.headers["retry-after"], "1", p);
@@ -1404,20 +1411,20 @@ describe("health and slow start", () => {
     });
     assert.equal(post.status, 503);
     assert.equal(fs.readFileSync(path.join(s, `${C1}/creativo.json`), "utf8"), before);
-    // Not data: the page and the token rules keep working.
+    // Not data: the page keeps working, and the cross-site guard applies while indexing too.
     assert.equal((await req(srv, { path: "/" })).status, 200);
-    assert.equal((await req(srv, { path: "/api/elementos", auth: false })).status, 401);
+    assert.equal((await req(srv, { path: "/api/elementos", headers: { "Sec-Fetch-Site": "cross-site" } })).status, 403);
     await srv.listo;
-    assert.equal((await req(srv, { path: "/api/salud", auth: false })).json().listo, true);
+    assert.equal((await req(srv, { path: "/api/salud" })).json().listo, true);
     assert.equal((await getJson(srv, "/api/elementos?archivados=1")).total, 8);
-    assert.equal((await req(srv, { path: "/datos.js" })).status, 200);
+    assert.equal((await req(srv, { path: "/datos.js" })).status, 404);
   });
 
   test("a change made while the index is not ready is picked up once it is", async () => {
     const s = estudioRico();
     const srv = await iniciar(s, { scanDelayMs: 500, sinEsperar: true, watch: false, checkMs: 100 });
     // Written while the index is not ready (the scan has not started): it is in the index once ready.
-    assert.equal((await req(srv, { path: "/api/salud", auth: false })).json().listo, false);
+    assert.equal((await req(srv, { path: "/api/salud" })).json().listo, false);
     write(s, "clientes/acme/MLA1/creativos/2026-03-09-x-tarde/creativo.json", { id: "2026-03-09-x-tarde", title: "Tarde", status: "draft" });
     await srv.listo;
     await esperar(async () => (await getJson(srv, "/api/elementos?q=tarde")).total === 1);
@@ -1429,12 +1436,29 @@ describe("health and slow start", () => {
     const state = path.join(s, ".galeria", "servidor.json");
     await esperar(() => fs.existsSync(state), 8000);
     const j = JSON.parse(fs.readFileSync(state, "utf8"));
-    const salud = () => req({ token: j.token, port: j.port }, { path: "/api/salud", auth: false });
+    const salud = () => req({ port: j.port }, { path: "/api/salud" });
     assert.equal((await salud()).json().listo, false);
     await esperar(async () => (await salud()).json().listo === true, 5000);
-    assert.equal((await req({ token: j.token, port: j.port }, { path: "/api/elementos" })).status, 200);
+    assert.equal((await req({ port: j.port }, { path: "/api/elementos" })).status, 200);
     p.child.kill("SIGTERM");
     assert.equal((await p.exited).code, 0);
+  });
+
+  test("close removes servidor.json only while it still names this process", async () => {
+    const s = estudioBasico();
+    const state = path.join(s, ".galeria", "servidor.json");
+    const own = await iniciar(s);
+    await own.close();
+    assert.ok(!fs.existsSync(state), "its own state is removed");
+    for (const cambio of [{ pid: process.pid + 1 }, { startedAt: "2000-01-01T00:00:00Z" }]) {
+      const srv = await iniciar(s);
+      const j = leer(s, ".galeria/servidor.json");
+      assert.equal(j.pid, process.pid);
+      fs.writeFileSync(state, JSON.stringify({ ...j, ...cambio }));
+      await srv.close();
+      assert.ok(fs.existsSync(state), "the state of another server is kept: " + JSON.stringify(cambio));
+      fs.rmSync(state);
+    }
   });
 
   test("closing during the scan stops it cleanly and removes servidor.json", async () => {
@@ -1453,13 +1477,12 @@ describe("process", () => {
     const state = path.join(s, ".galeria", "servidor.json");
     await esperar(() => fs.existsSync(state), 8000);
     const j = JSON.parse(fs.readFileSync(state, "utf8"));
-    assert.deepEqual(Object.keys(j).sort(), ["pid", "plugin", "port", "startedAt", "token", "version"]);
+    assert.deepEqual(Object.keys(j).sort(), ["pid", "plugin", "port", "startedAt", "version"]);
     assert.equal(j.pid, p.child.pid);
     assert.ok(j.port > 0);
-    assert.match(j.token, /^[0-9a-f]{64}$/);
     assert.match(j.startedAt, /^\d{4}-\d\d-\d\dT/);
     assert.equal(fs.statSync(state).mode & 0o777, 0o600);
-    const salud = await req({ token: j.token, port: j.port }, { path: "/api/salud" });
+    const salud = await req({ port: j.port }, { path: "/api/salud" });
     assert.equal(salud.status, 200);
     const t0 = Date.now();
     const r = await p.exited;
@@ -1476,7 +1499,7 @@ describe("process", () => {
     const j = JSON.parse(fs.readFileSync(state, "utf8"));
     const t0 = Date.now();
     while (Date.now() - t0 < 4500) {
-      assert.equal((await req({ token: j.token, port: j.port }, { path: "/api/salud" })).status, 200);
+      assert.equal((await req({ port: j.port }, { path: "/api/salud" })).status, 200);
       await sleep(500);
     }
     assert.ok(fs.existsSync(state), "still up after longer than the idle time, thanks to the requests");
