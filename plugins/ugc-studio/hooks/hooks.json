@@ -1,4 +1,8 @@
 {
+  "description": "UGC Studio: settings hooks that sync the gallery, and a mod (ugc-studio.mjs) with the Higgsfield spend guard and the credits meter.",
+  "modules": [
+    "./ugc-studio.mjs"
+  ],
   "hooks": {
     "SessionStart": [
       {
