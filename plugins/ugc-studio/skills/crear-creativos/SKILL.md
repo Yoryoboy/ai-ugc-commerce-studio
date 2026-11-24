@@ -109,4 +109,4 @@ Update `creativo.json` and `credits` in `studio.json` after every change.
 
 For each approved creative list, ready for the MCP that uploads to Meta: the files in order (4:5
 and 9:16, or cards 1…N), the `adName` and the copy (primary text, headline, description, CTA).
-Add total credits of the batch and where to see everything (the gallery: `sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open` opens it; the user can also ask "abrí la galería"). Do not upload anything.
+Add total credits of the batch and where to see everything (the gallery: open it as `workspace.md`, Gallery server, says; the user can also ask "abrí la galería"). Do not upload anything.

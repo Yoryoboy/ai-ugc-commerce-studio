@@ -272,9 +272,11 @@ product; they share `batch`.
 
 The gallery is a local server, not a file: `sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open`
 starts it if needed and opens it in the browser (`start`, `stop`, `status` and `url` also exist).
-The session start hook starts it by itself (or reuses the one already running), the session end
-hook stops it, and it also stops after 30 idle minutes (`UGC_GALERIA_IDLE_MIN`). Closing any session
-of the studio stops the shared server; another open session starts it again on its next file write. It
+The session start hook starts it by itself (or reuses the one already running). One server serves
+every session open on the studio, so closing a session does not stop it: it stops by itself after
+30 minutes without requests (`UGC_GALERIA_IDLE_MIN`). An open gallery page keeps it alive, since it
+polls the server. After it stopped, the next session start or file write starts it again, on the
+same port when it is still free (see `.galeria/puerto`). It
 needs Node 18 or newer (`references/dependencias.md`), listens on `127.0.0.1` only and indexes the
 folders in memory, so nothing has to be rebuilt after saving a file. Double-clicking `galeria.html`
 only shows a notice. A server of an older plugin version (or of the same version from another
@@ -288,7 +290,10 @@ studio: until then (a moment, longer in a huge studio) its data answers are `503
   (mode 600; `plugin` is the plugin folder it runs from). There is no access token: the address
   `http://127.0.0.1:<port>/` opens directly in the browser, and `galeria.sh start`, `status`, `url`
   and the hook summary print it. To open the gallery, run `galeria.sh open` (or tell the user to ask
-  "abrí la galería"); it opens that address with the system's `open` / `xdg-open`. What protects the
+  "abrí la galería"); it opens that address with the system's `open` / `xdg-open`. In the Claude
+  desktop app, after `galeria.sh start`, prefer `preview_start` with name `galeria` (see
+  `.claude/launch.json` below): it opens in the app's browser pane; use `galeria.sh open` when that
+  tool is not available or fails. What protects the
   server is that it listens on `127.0.0.1` only and checks every request: the `Host` header must be
   `127.0.0.1:<port>` or `localhost:<port>` (DNS rebinding); a request the browser marks
   `Sec-Fetch-Site: cross-site` or `same-site` is refused with `403`, except a link followed to `/`
@@ -297,6 +302,16 @@ studio: until then (a moment, longer in a huge studio) its data answers are `503
   (an old bookmark) redirects to `/`. `GET /api/salud` answers `{ok, version, pid, listo, studio,
   entities, scanMs}`. Trade-off: with no token, any other OS user of the same machine can reach the
   gallery on that port.
+- `.galeria/puerto`: the last port the server used. It outlives the server: on start the server
+  tries that port first (when it is inside 4317 … 4337) and only then the range from 4317, so the
+  gallery keeps its address across restarts (after the idle stop) unless another
+  program took the port meanwhile. Only one server runs per studio: every session reuses it through
+  `servidor.json` and `.galeria/arranque.lock`.
+- `.claude/launch.json`: on every start the server points its `galeria` configuration at the port
+  it got (`{name: "galeria", port, url}`, a url and no command: it attaches to the running server,
+  never starts one). Other configurations are kept; a file that is not valid JSON is left as it is
+  (logged in `.galeria/servidor.log`). In the Claude desktop app, `preview_start` with name
+  `galeria` opens the gallery in the browser pane. Never write this entry by hand.
 - `.galeria/miniaturas/<sha1>.jpg`: thumbnail cache. It can be deleted at any time; it is rebuilt.
 - `.galeria/validado`, `.galeria/rotos.txt`: state of the hook that validates the `.json` files.
 - `archived` and `archivedAt`: any `actor.json`, `producto.json`, `marca.json`, `video.json` or

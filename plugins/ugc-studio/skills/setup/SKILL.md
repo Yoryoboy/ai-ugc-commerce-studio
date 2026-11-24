@@ -73,12 +73,20 @@ gallery for the user:
 
 ```sh
 sh "${CLAUDE_PLUGIN_ROOT}/scripts/sincronizar.sh" --resumen
-sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open
+sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" start
 ```
 
-Check that `galeria.html` exists in the studio folder and that `galeria.sh open` printed an
+Check that `galeria.html` exists in the studio folder and that `galeria.sh start` printed an
 address (`http://127.0.0.1:…`). It needs Node.js 18 or newer: if it says Node is missing, go back to
 the Node item of `dependencias.md`.
+
+The server also wrote `.claude/launch.json` with a `galeria` configuration pointing at that address
+(`workspace.md`, Gallery server); do not write or edit it yourself. Open the gallery:
+
+- In the Claude desktop app (the `preview_start` tool exists): call `preview_start` with name
+  `galeria`. It opens in the app's browser pane, next to the chat.
+- Otherwise, or if `preview_start` fails: run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open`,
+  which opens it in the system browser.
 
 If the gallery does not start, tell the user the gallery could not be opened and give them the
 exact error; do not continue as if it worked.
@@ -87,9 +95,10 @@ exact error; do not continue as if it worked.
 
 Tell the user, in Spanish and in a few lines:
 
-- The gallery opened in their browser. To see it again, ask "abrí la galería" (running
-  `galeria.sh open`); double-clicking `galeria.html` does not work any more. It updates by itself
-  while Claude works.
+- The gallery opened (in the app's browser pane, or in their browser). To see it again, ask
+  "abrí la galería" (open it as in step 3); double-clicking `galeria.html` does not work any more.
+  It updates by itself while Claude works, from every session open on this folder: there is a
+  single gallery per studio.
 - Always open Claude on this same folder; otherwise it cannot find their actors and videos.
 - Credits available (from step 1).
 - If the memory was installed in this setup: open a new session in this same folder (and, on

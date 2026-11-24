@@ -1538,3 +1538,73 @@ describe("process", () => {
     assert.ok(!fs.existsSync(path.join(d, ".galeria", "servidor.json")));
   });
 });
+
+describe("stable port and .claude/launch.json", () => {
+  // A base port with the whole range free, as far as can be told: the system picks one, then it is freed.
+  async function baseLibre() {
+    const s = net.createServer();
+    await new Promise((r) => s.listen(0, "127.0.0.1", r));
+    const p = s.address().port;
+    await new Promise((r) => s.close(r));
+    return Math.min(p, 65535 - 21);
+  }
+  const leerLaunch = (studio) => JSON.parse(fs.readFileSync(path.join(studio, ".claude", "launch.json"), "utf8"));
+
+  test("a restarted server takes its last port again, even when a lower one is free", async () => {
+    const studio = estudioBasico();
+    const base = await baseLibre();
+    const blocker = net.createServer();
+    await new Promise((r) => blocker.listen(base, "127.0.0.1", r));
+    let primero;
+    try {
+      const srv = await crearServidor({ studio, port: base, idleMin: 0 });
+      primero = srv.port;
+      await srv.close();
+    } finally {
+      await new Promise((r) => blocker.close(r));
+    }
+    assert.ok(primero > base, `port ${primero}`);
+    assert.equal(fs.readFileSync(path.join(studio, ".galeria", "puerto"), "utf8").trim(), String(primero));
+    const srv2 = await crearServidor({ studio, port: base, idleMin: 0 });
+    servers.push(srv2);
+    assert.equal(srv2.port, primero);
+  });
+
+  test("a last port outside the range is ignored", async () => {
+    const studio = estudioBasico();
+    const base = await baseLibre();
+    write(studio, ".galeria/puerto", `${base + 500}\n`);
+    const srv = await crearServidor({ studio, port: base, idleMin: 0 });
+    servers.push(srv);
+    assert.equal(srv.port, base);
+  });
+
+  test("writes the galeria configuration to .claude/launch.json", async () => {
+    const studio = estudioBasico();
+    const srv = await iniciar(studio);
+    assert.deepEqual(leerLaunch(studio), {
+      version: "0.0.1",
+      configurations: [{ name: "galeria", port: srv.port, url: `http://127.0.0.1:${srv.port}` }],
+    });
+  });
+
+  test("updates only the galeria entry and keeps the other configurations", async () => {
+    const studio = estudioBasico();
+    const otra = { name: "web", runtimeExecutable: "npm", runtimeArgs: ["run", "dev"], port: 3000 };
+    write(studio, ".claude/launch.json", {
+      version: "0.0.1",
+      configurations: [otra, { name: "galeria", port: 1, url: "http://127.0.0.1:1" }],
+    });
+    const srv = await iniciar(studio);
+    assert.deepEqual(leerLaunch(studio).configurations, [otra, { name: "galeria", port: srv.port, url: `http://127.0.0.1:${srv.port}` }]);
+  });
+
+  test("leaves a malformed launch.json untouched", async () => {
+    const studio = estudioBasico();
+    const roto = '{"configurations": [\n';
+    write(studio, ".claude/launch.json", roto);
+    const srv = await iniciar(studio);
+    assert.equal((await req(srv, { path: "/api/salud" })).status, 200);
+    assert.equal(fs.readFileSync(path.join(studio, ".claude", "launch.json"), "utf8"), roto);
+  });
+});
