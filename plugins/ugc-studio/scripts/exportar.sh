@@ -4,9 +4,10 @@
 #   exportar.sh [--plan] [--completo] [--nombre <name>] <element>...
 #
 # Elements, relative to the studio: actores/<actorId>, clientes/<profileId>,
-# clientes/<profileId>/<productId>, clientes/<profileId>/<productId>/videos/<videoId>, or `todo`
-# (every actor, product and video). A video brings its product and its actor; a product or a
-# client brings its videos.
+# clientes/<profileId>/<productId>, clientes/<profileId>/<productId>/videos/<videoId>,
+# clientes/<profileId>/marca (the brand kit alone), or `todo`
+# (every actor, product, video and brand kit). A video brings its product and its actor; a product
+# or a client brings its videos; anything of a client brings its brand kit (clientes/<id>/marca).
 #
 #   --plan       print what the package would hold and its size; write nothing
 #   --completo   keep the drafts (borrador-vN.mp4) and the portrait candidates; by default they
@@ -36,6 +37,7 @@ trap 'rm -rf "$WORK"' EXIT
 : >"$WORK/products"
 : >"$WORK/videos"
 : >"$WORK/missing"
+: >"$WORK/clients"
 
 while [ $# -gt 0 ]; do
   case $1 in
@@ -70,6 +72,12 @@ add_video() {
   fi
 }
 
+# Records a client the package touches. Every client recorded here brings its brand kit
+# (clientes/<id>/marca): this is the only place the list of clients grows.
+add_client() {
+  printf '%s\n' "$1" | cut -d/ -f1-2 >>"$WORK/clients"
+}
+
 # Adds the products and videos under a folder (a client or a product).
 add_under() {
   for f in "$1"/producto.json "$1"/*/producto.json; do
@@ -89,16 +97,23 @@ while IFS= read -r e; do
       [ -f "$f" ] && printf '%s\n' "${f%/actor.json}" >>"$WORK/actors"
     done
     for c in clientes/*/; do
-      [ -d "$c" ] && add_under "${c%/}"
+      [ -d "$c" ] || continue
+      add_under "${c%/}"
+      add_client "${c%/}"
     done
   elif [ -f "$e/actor.json" ] && [ "${e%/*}" = actores ]; then
     printf '%s\n' "$e" >>"$WORK/actors"
   elif [ -f "$e/video.json" ] && [ "${e%/videos/*}" != "$e" ] && [ "${e#clientes/}" != "$e" ]; then
     add_video "$e"
+  elif [ -f "$e/marca.json" ] && [ "${e%/marca}" != "$e" ] && [ "${e%/*/*}" = clientes ]; then
+    add_client "$e" # the brand kit folder alone: clientes/<id>/marca
   elif [ -d "$e" ] && case $e in clientes/*) true ;; *) false ;; esac; then
     before=$(cat "$WORK/products" "$WORK/videos" | wc -l)
     add_under "$e"
-    [ "$(cat "$WORK/products" "$WORK/videos" | wc -l)" -gt "$before" ] || die "Not found: $e"
+    add_client "$e"
+    # A client with only a brand kit is still something to export.
+    [ "$(cat "$WORK/products" "$WORK/videos" | wc -l)" -gt "$before" ] || [ -f "$e/marca/marca.json" ] ||
+      die "Not found: $e"
   else
     die "Not found: $e"
   fi
@@ -107,12 +122,18 @@ done <"$WORK/elements"
 for list in actors products videos missing; do
   sort -u -o "$WORK/$list" "$WORK/$list"
 done
+# A product or a video touches its client too: its creatives point to the kit's logo.
+cat "$WORK/products" "$WORK/videos" | while IFS= read -r p; do add_client "$p"; done
+sort -u "$WORK/clients" | while IFS= read -r c; do
+  [ -f "$c/marca/marca.json" ] && printf '%s/marca\n' "$c"
+done >"$WORK/brands"
 
 # Files of every element: "keep" goes into the package in this mode, "all" is the complete one.
 {
   while IFS= read -r d; do find "$d" -type f ! -name .DS_Store; done <"$WORK/actors"
   while IFS= read -r d; do find "$d" -path "$d/videos" -prune -o -type f ! -name .DS_Store -print; done <"$WORK/products"
   while IFS= read -r d; do find "$d" -type f ! -name .DS_Store; done <"$WORK/videos"
+  while IFS= read -r d; do find "$d" -type f ! -name .DS_Store; done <"$WORK/brands"
 } | sort -u >"$WORK/all"
 grep -E '^clientes/[^/]+/[^/]+/videos/[^/]+/borrador-v[0-9]+\.mp4$' "$WORK/all" >"$WORK/drafts"
 grep -E '^actores/[^/]+/candidatos/' "$WORK/all" >"$WORK/candidates"
@@ -142,6 +163,12 @@ printf 'Mode: %s\n' "$MODE"
 printf 'Actors: %s\n' "$(sed 's|^actores/||' "$WORK/actors" | joined)"
 printf 'Products: %s\n' "$(joined <"$WORK/products")"
 printf 'Videos: %s\n' "$(joined <"$WORK/videos")"
+printf 'Brands: %s\n' "$(joined <"$WORK/brands")"
+# The originals the user gave for a brand kit (manuals, notes) can be confidential: name them so
+# nobody sends them without knowing.
+grep '/marca/referencias/' "$WORK/all" >"$WORK/references" || true
+[ -s "$WORK/references" ] &&
+  printf 'Brand references (the client'"'"'s originals, may be private): %s\n' "$(joined <"$WORK/references")"
 [ -s "$WORK/missing" ] &&
   printf 'Actors not in this studio (their videos go without them): %s\n' "$(joined <"$WORK/missing")"
 if [ $MODE = light ]; then
@@ -171,6 +198,7 @@ sed 's|^actores/||' "$WORK/actors" >"$WORK/actor-ids"
   printf '  "actors": %s,\n' "$(json_list "$WORK/actor-ids")"
   printf '  "products": %s,\n' "$(json_list "$WORK/products")"
   printf '  "videos": %s,\n' "$(json_list "$WORK/videos")"
+  printf '  "brands": %s,\n' "$(json_list "$WORK/brands")"
   printf '  "omitted": %s\n' "$(json_list "$WORK/omitted")"
   printf '}\n'
 } >"$WORK/manifest.json"

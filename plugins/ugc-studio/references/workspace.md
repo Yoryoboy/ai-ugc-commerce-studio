@@ -28,7 +28,9 @@ small local server (see "Gallery server, archive and trash"); `galeria.html` onl
     └── <profileId>/
         ├── marca/                  brand kit of the client, for creatives
         │   ├── marca.json
-        │   └── logo.png            optional (.png, .jpg, .webp or .svg)
+        │   ├── logo.png            optional (.png, .jpg, .webp or .svg)
+        │   ├── logo-<variant>.svg  optional other versions (blanco, negro, icono…)
+        │   └── referencias/        originals the user gave: manual, PDFs, images, notas.md
         └── <productId>/
             ├── producto.json
             ├── ficha.md            product sheet with allowed and forbidden claims
@@ -191,9 +193,22 @@ colors, fonts and logo from it.
     "text": "#142024",
     "background": "#ffffff"
   },
-  "fonts": { "heading": "Montserrat", "body": "Inter", "google": true },
+  "palette": [{ "name": "Arena", "hex": "#e8dcc4" }],
+  "fonts": { "heading": "Montserrat", "body": "Inter", "google": true, "brand": "Gotham" },
   "logo": "logo.png",
+  "logos": [
+    { "file": "logo.png", "use": "main, on light backgrounds" },
+    { "file": "logo-blanco.svg", "use": "on dark backgrounds or photos" }
+  ],
   "tone": "Cercano y directo, sin exagerar",
+  "audience": "Mujeres de 30 a 50 que cuidan su descanso",
+  "dos": ["Hablar de vos", "Mostrar el producto en uso"],
+  "donts": ["Nunca el logo sobre rojo", "No usar la palabra barato"],
+  "sources": [
+    { "type": "skill", "name": "acme-marca" },
+    { "type": "file", "path": "referencias/manual-de-marca.pdf" },
+    { "type": "url", "url": "https://acme.com.ar" }
+  ],
   "createdAt": "2026-11-16T12:00:00Z"
 }
 ```
@@ -203,7 +218,16 @@ colors, fonts and logo from it.
 - `fonts.google: true` loads both fonts from Google Fonts when the template is rendered (needs
   internet); otherwise they must be installed on the computer. If a font fails, the template falls
   back to the system font.
-- `logo` is a file name inside `marca/`, or `null`.
+- `logo` is a file name inside `marca/`, or `null`. It is the one the template and the gallery use.
+- Optional, read by the skills and ignored by the template and the gallery: `palette` (brand
+  colors beyond the four roles), `fonts.brand` (the real brand font when it is not on Google
+  Fonts; `heading`/`body` hold the closest Google Font), `logos` (every logo version with its use;
+  files inside `marca/`), `audience`, `dos` and `donts` (brand rules for copy and images) and
+  `sources` (where the kit came from: a client skill by `name`, a file in `referencias/` by
+  `path`, a `url`, or `"type": "proposed"` for what was proposed with no source).
+- `referencias/` keeps the originals the user gave, with their original names; pasted text goes
+  to `referencias/notas.md`. Nothing reads it automatically: it is there to rebuild or update
+  the kit.
 
 ## creativo.json
 
@@ -268,6 +292,21 @@ product; they share `batch`.
   carousel makes version `N + 1` with just that slot. The current piece of a slot is its file with
   the highest `N`. `credits` is the total of the creative.
 
+## Open the gallery
+
+The one rule every skill follows to show the gallery to the user (the skills point here, never
+copy it):
+
+1. `sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" start` (starts the server or reuses the running
+   one).
+2. In the Claude desktop app (the `preview_start` tool exists): `preview_start` with name
+   `galeria`. It opens in the app's browser pane, next to the chat.
+3. Otherwise, or if `preview_start` fails: `sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open`,
+   which opens it in the system browser.
+
+The user can also ask "abrí la galería" at any time. If the gallery does not start, give the user
+the exact error; do not go on as if it opened.
+
 ## Gallery server, archive and trash
 
 The gallery is a local server, not a file: `sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open`
@@ -289,11 +328,8 @@ studio: until then (a moment, longer in a huge studio) its data answers are `503
 - `.galeria/servidor.json`: `{pid, port, startedAt, version, plugin}`, written by the server
   (mode 600; `plugin` is the plugin folder it runs from). There is no access token: the address
   `http://127.0.0.1:<port>/` opens directly in the browser, and `galeria.sh start`, `status`, `url`
-  and the hook summary print it. To open the gallery, run `galeria.sh open` (or tell the user to ask
-  "abrí la galería"); it opens that address with the system's `open` / `xdg-open`. In the Claude
-  desktop app, after `galeria.sh start`, prefer `preview_start` with name `galeria` (see
-  `.claude/launch.json` below): it opens in the app's browser pane; use `galeria.sh open` when that
-  tool is not available or fails. What protects the
+  and the hook summary print it. `galeria.sh open` opens that address with the system's `open` /
+  `xdg-open`; to show the gallery follow "Open the gallery" above. What protects the
   server is that it listens on `127.0.0.1` only and checks every request: the `Host` header must be
   `127.0.0.1:<port>` or `localhost:<port>` (DNS rebinding); a request the browser marks
   `Sec-Fetch-Site: cross-site` or `same-site` is refused with `403`, except a link followed to `/`
@@ -372,20 +408,24 @@ plus a `manifest.json` at the root:
   "actors": ["martin-v1"],
   "products": ["clientes/acme/MLA1234567890"],
   "videos": ["clientes/acme/MLA1234567890/videos/2026-11-10-patas-cama-problema-solucion"],
+  "brands": ["clientes/acme/marca"],
   "omitted": ["clientes/acme/MLA1234567890/videos/2026-11-10-patas-cama-problema-solucion/borrador-v1.mp4"]
 }
 ```
 
 - A video brings its product (everything in the product folder except `videos/`) and its actor;
-  a product or a client brings its videos. `studio.json` never travels.
+  a product or a client brings its videos. Anything of a client (the client, a product or a
+  video) brings the client's brand kit, the whole `marca/` folder with its logos and
+  `referencias/`, because its creatives use the kit's logo. `studio.json` never travels.
 - `mode` is `light` (default: no `borrador-vN.mp4`, no `candidatos/`; the drafts are listed in
   `omitted` and stay reachable through the `jobId` of their version) or `complete`.
 - Packages are named `exportaciones/<yyyy-mm-dd>-<name>.zip` and never overwritten.
 - Importing never replaces a file. An element already in the studio with other content is a
   conflict: it is skipped (`--omitir`) or imported under a new id (`--renombrar`, actors and
-  videos only). Renaming an actor updates `id` and `version` in its `actor.json` and `actorId` in
-  the videos imported with it; renaming a video updates its `id`.
+  videos only: a product keeps the id of its platform and a brand kit belongs to its client, so
+  both only take `--omitir`). Renaming an actor updates `id` and `version` in its `actor.json` and
+  `actorId` in the videos imported with it; renaming a video updates its `id`.
 - Both computers must use the same Higgsfield account: the ids and links in the `.json` files
   belong to it.
-- Creatives travel inside their product folder. Brand kits (`clientes/<profileId>/marca/`) and the
-  actors that appear only in creatives do not travel yet: copy them by hand if needed.
+- Creatives travel inside their product folder. The actors that appear only in creatives do not
+  travel yet: copy them by hand if needed.

@@ -22,13 +22,36 @@ allowed and forbidden claims, `producto.json`).
 ## 2. Brand kit
 
 Look for `clientes/<profileId>/marca/marca.json`. If it exists, reuse it (tell the user in one
-line) and go on. If not:
+line) and go on. If the user brings new references for a client that already has a kit, update it
+the same way as below: show what changes and write only after they confirm.
 
-1. Propose colors (`primary`, `accent`, `text`, `background`) and two fonts from the product
-   photos and the store (look at the images; Google Fonts names, `google: true`), plus a short
-   `tone`.
-2. Ask for the logo file (copy it to `marca/logo.<ext>`) or go without (`logo: null`).
-3. When the user confirms, write `marca.json` (`workspace.md`). Do not ask again next time.
+If there is no kit, build it from what the client already has defined, not from scratch:
+
+1. **Client skill.** Many users keep each client's guidelines in a skill of their own. Look at
+   the skills available in this session for one about this client (its name, store or
+   `profileId` in the skill name or description). If there is one, say which and load it with
+   the Skill tool. If there are several candidates, ask which one; if none, go on.
+2. **Ask for every reference, in one message.** Anything helps, nothing is required: brand
+   manual or guidelines (PDF, images), logos in every version they have (SVG, PNG, light and
+   dark, icon), color codes, font names, text pasted from their Claude chats or artifacts (you
+   cannot read those yourself: they paste it or attach the file), links to the site or Instagram.
+3. **Save the originals.** Copy every file they give to `marca/referencias/` with its original
+   name, and save pasted text as `marca/referencias/notas.md`. Copy the main logo to
+   `marca/logo.<ext>` and the other versions to `marca/logo-<variant>.<ext>` (`blanco`,
+   `negro`, `icono`…). Read the PDFs and look at the images.
+4. **Extract the kit** (`workspace.md`, `marca.json`): map the brand palette to the four roles
+   (`primary`, `accent`, `text`, `background`) and keep the rest in `palette`; fonts; `tone`;
+   `audience`; brand rules in `dos` and `donts`; the logo versions in `logos`; and every source
+   in `sources`. If the brand font is not on Google Fonts, use the closest Google Font in
+   `fonts` and write the real one in `fonts.brand`. When two sources disagree, ask.
+5. **Fill the gaps** only for what no reference says: propose it from the product photos and the
+   store (Google Fonts names, `google: true`), and mark it as proposed when you show it.
+6. Show a short summary (colors with their hex, fonts, logo versions, tone, rules, and what was
+   proposed vs. taken from a source). When the user confirms, write `marca.json`. Do not ask
+   again next time.
+
+Use the kit in the rest of the batch: `tone`, `audience`, `dos` and `donts` guide the copy and the
+concepts, and the image prompts follow the colors and rules.
 
 ## 3. Concepts → decision 1
 
@@ -109,4 +132,4 @@ Update `creativo.json` and `credits` in `studio.json` after every change.
 
 For each approved creative list, ready for the MCP that uploads to Meta: the files in order (4:5
 and 9:16, or cards 1…N), the `adName` and the copy (primary text, headline, description, CTA).
-Add total credits of the batch and where to see everything (the gallery: open it as `workspace.md`, Gallery server, says; the user can also ask "abrí la galería"). Do not upload anything.
+Add total credits of the batch and where to see everything (the gallery: open it following `workspace.md`, "Open the gallery"). Do not upload anything.

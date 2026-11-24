@@ -32,11 +32,12 @@ actores no van a servir para videos nuevos y los links pueden no abrir."
    | "exportá el video de las patas" | `clientes/<profileId>/<productId>/videos/<videoId>` |
    | "exportá las patas de sommier" (a product, with its videos) | `clientes/<profileId>/<productId>` |
    | "exportá el cliente Acme" | `clientes/<profileId>` |
+   | "exportá el kit de marca de Acme" | `clientes/<profileId>/marca` |
    | "exportá todo el studio" | `todo` |
 
    Several at once is fine. If two match (two videos of the same product), ask which, showing
    their titles. A video always brings its product and its actor; a product or a client brings
-   its videos.
+   its videos; anything of a client brings its brand kit (`marca/`, with logos and references).
 2. **Plan.** Run `exportar.sh --plan <elements>` and tell the user what goes, in words: actors by
    name, products by title, videos by title. Offer the mode with both sizes from the plan:
    - **Liviano** (default): images, `.json`, product photos and final videos. Drafts stay as a
@@ -44,7 +45,9 @@ actores no van a servir para videos nuevos y los links pueden no abrir."
    - **Completo** (`--completo`): also every draft and the portrait candidates.
 
    Add the Higgsfield account warning. If the plan lists actors not in this studio, say that those
-   videos go without their actor. Wait for the user to confirm.
+   videos go without their actor. If it prints `Brand references`, name those files and say they
+   are the client's originals (manuals, notes) that go inside the package, so the user decides
+   whether that is fine for whoever receives it. Wait for the user to confirm.
 3. **Create.** Run it without `--plan`, with `--nombre <name>`: a short slug of what goes
    (`video-patas-cama`, `actor-martin`, `cliente-acme`, `studio`). It prints `Package: <path>` and
    its size.
@@ -84,6 +87,9 @@ actores no van a servir para videos nuevos y los links pueden no abrir."
    - Video: import it as `<videoId>-2` (`--renombrar`), or skip it (`--omitir`).
    - Product: products keep their platform id, so propose keeping theirs (`--omitir`); the
      package's videos still come in under it.
+   - Brand kit (`brand`): it cannot be renamed, so propose keeping theirs (`--omitir`); the rest
+     of the package still comes in. If the package's kit looks newer or more complete, say it:
+     they can compare both and update their kit with `crear-creativos` afterwards.
 
    Wait for the user's answer on every conflict. Never decide one for them.
 4. **Import.** Run `importar.sh --aplicar` with one `--omitir` or `--renombrar` per conflict. It
@@ -91,7 +97,7 @@ actores no van a servir para videos nuevos y los links pueden no abrir."
    package that holds files outside `actores/` and `clientes/`, symbolic links or broken JSON is
    refused: tell the user it is not a valid UGC Studio package and ask who sent it.
 5. **Close.** Run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/sincronizar.sh" --resumen` and tell the user
-   what came in and that it is already in the gallery (it refreshes by itself; to open it run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open`).
+   what came in and that it is already in the gallery (it refreshes by itself; to open it follow `workspace.md`, "Open the gallery").
    - `Drafts left out:` lists drafts that stayed in Higgsfield. Offer to download them: "3
      borradores quedaron como link a Higgsfield; si querés, los bajo ahora." To download one, find
      its version in `video.json` (`n` = the number in `borrador-vN.mp4`), get the video with the

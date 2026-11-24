@@ -80,5 +80,5 @@ and outfit match the portrait in every view.
 
 ## 6. Close
 
-Tell the user the actor is ready and is in the gallery (Actores; to open it see "To open the gallery" in `workspace.md`), the credits used, and suggest
+Tell the user the actor is ready and is in the gallery (Actores; to open it follow `workspace.md`, "Open the gallery"), the credits used, and suggest
 the next step ("¿Hacemos un video con <nombre>?").

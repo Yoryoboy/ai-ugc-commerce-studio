@@ -81,22 +81,15 @@ address (`http://127.0.0.1:…`). It needs Node.js 18 or newer: if it says Node 
 the Node item of `dependencias.md`.
 
 The server also wrote `.claude/launch.json` with a `galeria` configuration pointing at that address
-(`workspace.md`, Gallery server); do not write or edit it yourself. Open the gallery:
-
-- In the Claude desktop app (the `preview_start` tool exists): call `preview_start` with name
-  `galeria`. It opens in the app's browser pane, next to the chat.
-- Otherwise, or if `preview_start` fails: run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open`,
-  which opens it in the system browser.
-
-If the gallery does not start, tell the user the gallery could not be opened and give them the
-exact error; do not continue as if it worked.
+(`workspace.md`, Gallery server); do not write or edit it yourself. Now open the gallery following
+`workspace.md`, "Open the gallery" (the server is already started).
 
 ## 4. Hand over
 
 Tell the user, in Spanish and in a few lines:
 
 - The gallery opened (in the app's browser pane, or in their browser). To see it again, ask
-  "abrí la galería" (open it as in step 3); double-clicking `galeria.html` does not work any more.
+  "abrí la galería" (open it as `workspace.md`, "Open the gallery", says); double-clicking `galeria.html` does not work any more.
   It updates by itself while Claude works, from every session open on this folder: there is a
   single gallery per studio.
 - Always open Claude on this same folder; otherwise it cannot find their actors and videos.

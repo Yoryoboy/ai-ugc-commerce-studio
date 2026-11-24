@@ -12,7 +12,9 @@
 #
 #   importar.sh --aplicar [--omitir <path>]... [--renombrar <path>=<new-id>]... <package.zip>
 #       Import. Every conflict needs --omitir (keep the studio's element) or --renombrar (import it
-#       under a new id; actors and videos only). Nothing in the studio is ever replaced.
+#       under a new id; actors and videos only: a product keeps the id of its platform and a
+#       brand kit belongs to its client).
+#       Nothing in the studio is ever replaced.
 #
 # The package is checked before anything is written: only manifest.json, actores/ and clientes/,
 # no path that climbs out, no symbolic links, valid JSON. Uses only tools that macOS ships with.
@@ -111,13 +113,14 @@ EXPORTED=$(field exportedAt "$STAGE/manifest.json")
   for f in actores/*/actor.json; do [ -f "$f" ] && printf 'actor\t%s\n' "${f%/actor.json}"; done
   for f in clientes/*/*/producto.json; do [ -f "$f" ] && printf 'product\t%s\n' "${f%/producto.json}"; done
   for f in clientes/*/*/videos/*/video.json; do [ -f "$f" ] && printf 'video\t%s\n' "${f%/video.json}"; done
+  for f in clientes/*/marca/marca.json; do [ -f "$f" ] && printf 'brand\t%s\n' "${f%/marca.json}"; done
 ) >"$WORK/elements"
-[ -s "$WORK/elements" ] || die "the package holds no actor, product or video: $ZIP"
+[ -s "$WORK/elements" ] || die "the package holds no actor, product, video or brand kit: $ZIP"
 
 # Actor and video ids follow the naming rules (workspace.md); the scripts rely on it.
 valid_id() { case $1 in '' | -* | *[!a-z0-9-]*) return 1 ;; esac; }
 while IFS="$(printf '\t')" read -r kind path; do
-  [ "$kind" = product ] && continue
+  case $kind in product | brand) continue ;; esac
   valid_id "${path##*/}" || die "the package breaks the naming rules, nothing imported: $path"
   if [ "$kind" = video ]; then
     a=$(field actorId "$STAGE/$path/video.json")
@@ -132,7 +135,7 @@ files_of() {
     *) find "$2" -type f ;;
   esac) | sort
 }
-marker() { case $1 in actor) echo actor.json ;; product) echo producto.json ;; video) echo video.json ;; esac; }
+marker() { case $1 in actor) echo actor.json ;; product) echo producto.json ;; video) echo video.json ;; brand) echo marca.json ;; esac; }
 
 : >"$WORK/states"
 while IFS="$(printf '\t')" read -r kind path; do
@@ -191,6 +194,7 @@ while IFS="$(printf '\t')" read -r p new; do
   [ -n "$kind" ] || die "Not in the package: $p"
   grep -qxF "$p" "$WORK/omit" && die "choose either --omitir or --renombrar for $p"
   [ "$kind" = product ] && die "a product keeps the id of its platform and cannot be renamed: $p (use --omitir)"
+  [ "$kind" = brand ] && die "a brand kit belongs to its client and cannot be renamed: $p (use --omitir)"
   valid_id "$new" || die "new id must use lowercase letters, digits and -: $new"
   if [ "$kind" = actor ]; then
     printf '%s' "$new" | grep -Eq -- '-v[0-9]+$' || die "an actor id ends in -v<number>: $new"
@@ -219,6 +223,8 @@ if [ $APPLY -eq 0 ]; then
     if [ "$state" = conflict ]; then
       if [ "$kind" = product ]; then
         printf '          Proposed: --omitir %s (keep the studio'"'"'s product; its videos still import)\n' "$path"
+      elif [ "$kind" = brand ]; then
+        printf '          Proposed: --omitir %s (keep the studio'"'"'s brand kit)\n' "$path"
       else
         printf '          Proposed: --renombrar %s=%s\n' "$path" "$(propose "$kind" "$path")"
       fi
