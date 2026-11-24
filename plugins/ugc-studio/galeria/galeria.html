@@ -234,6 +234,30 @@ body.has-bar .estado { bottom: 92px; }
 .chip.export { white-space: nowrap; }
 .chip.export:hover { border-color: var(--accent); }
 .skeleton { color: var(--muted); padding: 24px 0; text-align: center; }
+
+/* image viewer: studio images open full size over the page, never in a new tab */
+body.visor-open { overflow: hidden; }
+.visor { position: fixed; inset: 0; z-index: 60; background: rgba(8, 8, 10, 0.96); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: #f4f4f5; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.visor[hidden] { display: none; }
+.visor-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
+.visor-cap { margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.visor-count { font-size: 0.85rem; opacity: 0.75; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.visor button { font: inherit; color: inherit; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 999px; cursor: pointer; display: grid; place-items: center; padding: 0; }
+.visor button:hover { background: rgba(255, 255, 255, 0.22); }
+.visor button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.visor-x { width: 40px; height: 40px; font-size: 1.5rem; line-height: 1; }
+.visor-stage { margin: 0; display: grid; place-items: center; padding: 0 72px 24px; min-height: 0; }
+.visor-stage img { max-width: 100%; max-height: calc(100dvh - 90px); object-fit: contain; border-radius: 6px; box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5); animation: visor-in 160ms ease-out; }
+.visor-stage .placeholder { color: #f4f4f5; }
+.visor-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 48px; height: 48px; font-size: 1.7rem; line-height: 1; }
+.visor-prev { left: 12px; }
+.visor-next { right: 12px; }
+@keyframes visor-in { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .visor-stage img { animation: none; } }
+@media (max-width: 560px) {
+  .visor-stage { padding: 0 8px 76px; }
+  .visor-nav { top: auto; bottom: 16px; transform: none; }
+}
 </style>
 </head>
 <body>
@@ -273,6 +297,7 @@ body.has-bar .estado { bottom: 92px; }
 <div class="estado" id="estado" role="status" aria-live="polite"></div>
 <div class="manual" id="manual" role="dialog" aria-modal="true" aria-labelledby="manual-titulo" hidden></div>
 <div class="manual" id="dialogo" role="alertdialog" aria-modal="true" aria-labelledby="dialogo-titulo" hidden></div>
+<div class="visor" id="visor" role="dialog" aria-modal="true" aria-labelledby="visor-titulo" hidden></div>
 <script>
 "use strict";
 
@@ -481,7 +506,7 @@ async function poll() {
 function idle() {
   const playing = [...document.querySelectorAll("video")].some((v) => !v.paused && !v.ended);
   const typing = document.activeElement && document.activeElement.matches && document.activeElement.matches("input, select, textarea");
-  return !playing && !typing && state.selection.size === 0 && !state.busy && $("dialogo").hidden && $("manual").hidden;
+  return !playing && !typing && state.selection.size === 0 && !state.busy && $("dialogo").hidden && $("manual").hidden && $("visor").hidden;
 }
 
 async function refreshView(silent) {
@@ -1018,6 +1043,106 @@ function picture(path, w, alt) {
   return im;
 }
 
+// ---------- image viewer ----------
+// Studio images open in #visor instead of a new tab. Every viewable link in the view is one
+// group, so the arrows walk through all of them. Opening pushes a history entry with the same
+// URL, so the browser Back button closes the viewer; Escape, the close button and a click on the
+// dark backdrop close it the same way. Ctrl/Cmd/middle click still opens the file in a new tab.
+const visor = { items: [], i: 0, pushed: false, trigger: null, touchX: null };
+
+function viewable(path, caption, attrs, ...children) {
+  return h("a", { ...attrs, href: url(path), "data-visor": "", "data-titulo": caption, "aria-label": "Ver " + caption + " en grande", onclick: openViewer }, ...children);
+}
+
+function openViewer(ev) {
+  if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+  ev.preventDefault();
+  const links = [...$("app").querySelectorAll("a[data-visor]")];
+  visor.items = links.map((a) => ({ src: a.getAttribute("href"), caption: a.dataset.titulo || "" }));
+  visor.i = Math.max(0, links.indexOf(ev.currentTarget));
+  visor.trigger = ev.currentTarget;
+  const panel = $("visor");
+  if (panel.hidden) {
+    history.pushState({ visor: true }, "", location.href);
+    visor.pushed = true;
+    panel.hidden = false;
+    document.body.classList.add("visor-open");
+    document.addEventListener("keydown", onViewerKey);
+  }
+  drawViewer();
+}
+
+function drawViewer() {
+  const n = visor.items.length;
+  const it = visor.items[visor.i];
+  const img = h("img", { src: it.src, alt: it.caption });
+  img.addEventListener("error", () => img.replaceWith(h("div", { class: "placeholder" }, "No se pudo cargar la imagen")));
+  const close = h("button", { class: "visor-x", type: "button", "aria-label": "Cerrar", title: "Cerrar (Esc)", onclick: closeViewer }, "×");
+  fill($("visor"),
+    h("div", { class: "visor-bar" },
+      h("p", { class: "visor-cap", id: "visor-titulo" }, it.caption),
+      n > 1 ? h("span", { class: "visor-count" }, (visor.i + 1) + " de " + n) : null,
+      close),
+    h("figure", { class: "visor-stage" }, img),
+    n > 1 ? h("button", { class: "visor-nav visor-prev", type: "button", "aria-label": "Anterior", title: "Anterior (←)", onclick: () => stepViewer(-1) }, "‹") : null,
+    n > 1 ? h("button", { class: "visor-nav visor-next", type: "button", "aria-label": "Siguiente", title: "Siguiente (→)", onclick: () => stepViewer(1) }, "›") : null);
+  close.focus();
+  // Warm up the neighbours so the arrows feel instant.
+  if (n > 1) for (const d of [1, -1]) new Image().src = visor.items[(visor.i + d + n) % n].src;
+}
+
+function stepViewer(d) {
+  const n = visor.items.length;
+  if (n < 2) return;
+  visor.i = (visor.i + d + n) % n;
+  drawViewer();
+}
+
+// Leaving through history keeps Back and the close button in step: both end in popstate.
+function closeViewer() {
+  if (visor.pushed && history.state && history.state.visor) history.back();
+  else hideViewer();
+}
+
+function hideViewer() {
+  const panel = $("visor");
+  if (panel.hidden) return;
+  panel.hidden = true;
+  panel.replaceChildren();
+  visor.pushed = false;
+  document.body.classList.remove("visor-open");
+  document.removeEventListener("keydown", onViewerKey);
+  const t = visor.trigger;
+  visor.trigger = null;
+  if (t && t.isConnected) t.focus();
+}
+
+function onViewerKey(e) {
+  if (e.key === "Escape") { e.preventDefault(); closeViewer(); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); stepViewer(1); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); stepViewer(-1); }
+  else if (e.key === "Tab") {
+    // Keep the focus inside the viewer while it is open.
+    const f = [...$("visor").querySelectorAll("button")];
+    if (!f.length) return;
+    const at = f.indexOf(document.activeElement);
+    e.preventDefault();
+    f[(at + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+  }
+}
+
+$("visor").addEventListener("click", (e) => {
+  if (e.target === e.currentTarget || e.target.classList.contains("visor-stage")) closeViewer();
+});
+$("visor").addEventListener("touchstart", (e) => { visor.touchX = e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
+$("visor").addEventListener("touchend", (e) => {
+  if (visor.touchX === null) return;
+  const dx = e.changedTouches[0].clientX - visor.touchX;
+  visor.touchX = null;
+  if (Math.abs(dx) > 50) stepViewer(dx < 0 ? 1 : -1);
+});
+window.addEventListener("popstate", hideViewer);
+
 // "Carrusel · 5 tarjetas" / "Estática · 2 piezas" from the type and piece count the server sends.
 function typeLabel(it) {
   const n = it.pieces || 0;
@@ -1338,7 +1463,7 @@ async function viewProducto(r, my) {
   state.view = view;
   if (tab === "fotos") {
     mount(crumbs(crumbItems), head, tabs, photos.length
-      ? h("div", { class: "photos" }, photos.map((p, i) => h("a", { href: url(p), target: "_blank", rel: "noopener", "aria-label": "Abrir la foto " + (i + 1) + " en tamaño real" }, picture(p, 480, "Foto " + (i + 1) + " de " + ptitle))))
+      ? h("div", { class: "photos" }, photos.map((p, i) => viewable(p, "Foto " + (i + 1) + " de " + ptitle, {}, picture(p, 480, "Foto " + (i + 1) + " de " + ptitle))))
       : emptyBox("Este producto no tiene fotos", "Las fotos se guardan en la carpeta fotos/ del producto."));
     view.refresh = async () => { state.productos.clear(); await route(true); };
     return;
@@ -1582,11 +1707,11 @@ async function creativeDetail(e, after, my) {
     const ratio = /^\d+x\d+$/.test(p.slot) ? " r" + p.slot : /^tarjeta-\d+$/.test(p.slot) ? " tarjeta" : "";
     return h("figure", { class: "piece" + ratio },
       p.current
-        ? h("a", { class: "shot", href: url(p.current.src), target: "_blank", rel: "noopener", "aria-label": "Abrir " + p.label + " en tamaño real" }, picture(p.current.src, 960, name + " · " + p.label))
+        ? viewable(p.current.src, name + " · " + p.label + " · versión " + p.current.n, { class: "shot" }, picture(p.current.src, 960, name + " · " + p.label))
         : h("div", { class: "shot" }, h("div", { class: "placeholder" }, "Sin imagen todavía")),
       h("figcaption", { class: "meta" }, p.label + (p.current ? " · versión " + p.current.n : "")),
       p.older.length ? h("div", { class: "olds" }, "Anteriores",
-        p.older.map((o) => h("a", { href: url(o.src), target: "_blank", rel: "noopener", "aria-label": p.label + ", versión " + o.n }, picture(o.src, 240, ""), "v" + o.n))) : null);
+        p.older.map((o) => viewable(o.src, name + " · " + p.label + " · versión " + o.n, {}, picture(o.src, 240, ""), "v" + o.n))) : null);
   };
   const k = j.concept || {};
   const mode = j.textMode === "template" ? "Plantilla" + (j.layout ? " · " + j.layout : "") : j.textMode === "integrated" ? "Texto en la imagen" : null;
@@ -1658,7 +1783,7 @@ function videoDetail(e, after) {
         scenes.length ? h("div", { class: "group" },
           h("span", { class: "label" }, "Storyboard"),
           h("div", { class: "scenes" }, scenes.map((s) =>
-            h("a", { href: url(s.src), target: "_blank", rel: "noopener" }, picture(s.src, 480, "Escena " + s.n), "Escena " + s.n)))) : null,
+            viewable(s.src, "Escena " + s.n, {}, picture(s.src, 480, "Escena " + s.n), "Escena " + s.n)))) : null,
         versions.length ? h("div", { class: "group" },
           h("span", { class: "label" }, "Historial"),
           h("div", { class: "rows" }, [...versions].reverse().map((v) =>
@@ -1685,7 +1810,7 @@ async function actorDetail(e, after) {
     h("div", { class: "detail" },
       h("div", { class: "player" },
         h("div", { class: "media", style: "aspect-ratio:4/5" }, portrait ? picture(portrait, 960, "Retrato de " + e.title) : h("div", { class: "placeholder" }, "Sin retrato")),
-        portrait ? h("a", { href: url(portrait), target: "_blank", rel: "noopener" }, "Abrir el original") : null),
+        portrait ? viewable(portrait, "Retrato de " + e.title, {}, "Ver en grande") : null),
       h("div", { class: "info" },
         h("div", { class: "pills" }, e.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null),
         h("h1", {}, e.title),
@@ -1698,14 +1823,14 @@ async function actorDetail(e, after) {
         h("div", { class: "links" },
           h("a", { href: hSearch(new URLSearchParams({ tipo: "video", actor: e.actorId })) }, plural(nVideos, "video", "videos")),
           h("a", { href: hSearch(new URLSearchParams({ tipo: "creativo", actor: e.actorId })) }, plural(nCreat, "creativo", "creativos")),
-          extra.map(([n, label]) => h("a", { href: url(file(n)), target: "_blank", rel: "noopener" }, label))))));
+          extra.map(([n, label]) => viewable(file(n), label + " de " + e.title, {}, label))))));
 }
 
 // ---------- start ----------
 
 // The skip link must not change the hash: the hash is the route.
 $("saltar").addEventListener("click", (ev) => { ev.preventDefault(); $("app").focus(); });
-window.addEventListener("hashchange", () => { route(false); });
+window.addEventListener("hashchange", () => { hideViewer(); route(false); });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && location.protocol !== "file:") poll(); });
 if (location.protocol === "file:") {
   // Opened by double-click: there is no server behind this page.

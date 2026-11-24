@@ -77,6 +77,7 @@ creativo(ids.desc, { title: "Concepto descartado uno", batch: "2026-11-16-patas-
 png(`${CR(ids.desc)}/4x5-v1.png`, "#777777");
 creativo(ids.desc2, { title: "Concepto descartado dos", batch: "2026-11-17-patas-cama", status: "discarded", updatedAt: "2026-11-17T14:00:00Z" });
 png(`${CR(ids.desc2)}/4x5-v1.png`, "#999999");
+
 json(`${VID(V1)}/video.json`, {
   id: V1, title: "La cama pegada al piso", actorId: "ana-v1", status: "draft", credits: 56, hook: "¿Ustedes también tienen la cama pegada?",
   versions: [{ n: 1, credits: 20 }, { n: 2, credits: 20 }, { n: 3, credits: 16 }], updatedAt: "2026-11-10T18:05:00Z",
@@ -87,6 +88,10 @@ json(`${VID(V2)}/video.json`, { id: V2, title: "Video descartado de prueba", sta
 file(`${VID(V2)}/borrador-v1.mp4`, "v"); png(`${VID(V2)}/thumb-v1.jpg`, "#666666", "270x480");
 json("clientes/beta/marca/marca.json", { name: "Beta Hogar" });
 json("clientes/beta/MLB2/producto.json", { profileId: "beta", productId: "MLB2", title: "Lámpara de pie" });
+// Only the viewer step uses it, so no other step changes its images or counts it.
+const VIS = "clientes/beta/MLB2/creativos/2026-11-15-x-visor";
+json(`${VIS}/creativo.json`, { id: "2026-11-15-x-visor", title: "Piezas para el visor", type: "static", status: "draft", batch: "2026-11-15-lampara", slots: ["4x5", "9x16"], updatedAt: "2026-11-15T12:00:00Z" });
+png(`${VIS}/4x5-v1.png`, "#1f6f8b"); png(`${VIS}/4x5-v2.png`, "#8b1f4e"); png(`${VIS}/9x16-v1.png`, "#4e8b1f", "270x480");
 // An old entry in the trash (2020), written the way the server writes them.
 file(".papelera/2020-01-01T000000Z-abcdef/clientes/acme/viejo.txt", "old");
 json(".papelera/2020-01-01T000000Z-abcdef/papelera.json", { id: "2020-01-01T000000Z-abcdef", originalPath: "clientes/acme/viejo.txt", trashedAt: "2020-01-01T00:00:00Z", kind: "file" });
@@ -448,6 +453,51 @@ await step("busy refresh: a change that arrives while something is selected is d
   await page.waitFor(`[...document.querySelectorAll(".item h3")].some((h) => h.textContent === "Pieza que llegó mientras seleccionaba")`, "the pending refresh after the selection is cleared", 4000);
   expect(await page.eval(`state.pendingRefresh === false`), "the pending flag was not reset");
   await page.shot("13-refresco-pendiente-dibujado");
+});
+
+await step("viewer: studio images open in an in-page viewer (no new tab), arrows move, Escape and Back close it", async () => {
+  const detail = "#/elemento/" + VIS.split("/").map(encodeURIComponent).join("/");
+  await page.hash(detail);
+  await page.waitFor(`document.querySelector("h1") && document.querySelector("h1").textContent === "Piezas para el visor"`, "creative detail");
+  const local = await page.eval(`[...document.querySelectorAll("#app a[target=_blank]")].filter((a) => a.href.startsWith(location.origin)).length`);
+  expect(local === 0, local + " studio file link(s) still open a new tab");
+  const links = await page.eval(`[...document.querySelectorAll("#app a[data-visor]")].map((a) => a.getAttribute("href"))`);
+  expect(links.length === 3, "viewer links: " + JSON.stringify(links));
+  const histLen = await page.eval(`history.length`);
+  await page.eval(`document.querySelector("#app a[data-visor]").click(), true`);
+  await page.waitFor(`!document.getElementById("visor").hidden`, "the viewer to open");
+  expect(await page.eval(`location.hash`) === detail, "opening the viewer changed the route");
+  const src0 = await page.eval(`document.querySelector("#visor img").getAttribute("src")`);
+  expect(src0 === links[0], `viewer shows ${src0}, expected ${links[0]}`);
+  has(await page.text("#visor"), "1 de " + links.length, "viewer counter");
+  await page.shot("14-visor-abierto");
+  await page.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })), true`);
+  await page.waitFor(`document.querySelector("#visor img").getAttribute("src") === ${JSON.stringify(links[1])}`, "ArrowRight to show the next image");
+  await page.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })), true`);
+  await page.waitFor(`document.querySelector("#visor img").getAttribute("src") === ${JSON.stringify(links[0])}`, "ArrowLeft to go back");
+  await page.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
+  await page.waitFor(`document.getElementById("visor").hidden`, "Escape to close the viewer");
+  await page.waitFor(`history.length === ${histLen} || location.hash === ${JSON.stringify(detail)}`, "history to settle");
+  expect(await page.eval(`location.hash`) === detail, "Escape left the detail view");
+  expect(await page.eval(`document.activeElement === document.querySelector("#app a[data-visor]")`), "focus did not return to the clicked image");
+  // The browser Back button closes the viewer and stays on the same view.
+  await page.eval(`document.querySelectorAll("#app a[data-visor]")[1].click(), true`);
+  await page.waitFor(`!document.getElementById("visor").hidden`, "the viewer to reopen");
+  await page.eval(`history.back(), true`);
+  await page.waitFor(`document.getElementById("visor").hidden`, "Back to close the viewer");
+  await sleep(150);
+  expect(await page.eval(`location.hash`) === detail, "Back left the detail view: " + (await page.eval(`location.hash`)));
+  // Clicking the dark backdrop closes it too.
+  await page.eval(`document.querySelector("#app a[data-visor]").click(), true`);
+  await page.waitFor(`!document.getElementById("visor").hidden`, "the viewer to open again");
+  await page.eval(`document.getElementById("visor").dispatchEvent(new MouseEvent("click", { bubbles: true })), true`);
+  await page.waitFor(`document.getElementById("visor").hidden`, "a backdrop click to close the viewer");
+  await sleep(150);
+  expect(await page.eval(`location.hash`) === detail, "the backdrop click left the detail view");
+  // Product photos use the same viewer.
+  await page.hash("#/acme/MLA1/fotos");
+  await page.waitFor(`!!document.querySelector(".photos a")`, "product photos");
+  expect(await page.eval(`!document.querySelector(".photos a[target=_blank]") && !!document.querySelector(".photos a[data-visor]")`), "product photos still open a new tab");
 });
 
 await page.close();
