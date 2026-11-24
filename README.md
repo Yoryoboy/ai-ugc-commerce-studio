@@ -218,7 +218,8 @@ references/dependencias.md qué necesita el estudio y cómo revisarlo e instalar
 references/engram.md      cómo instalar la memoria persistente (Engram); lo sigue el setup
 references/plantillas/    la plantilla HTML de los creativos con texto puesto encima
 hooks/hooks.json          al abrir la sesión y después de cada archivo que escribe Claude,
-                          corre scripts/sincronizar.sh
+                          corre scripts/sincronizar.sh (enciende la galería o usa la que ya
+                          corre); al cerrar la sesión apaga la galería (galeria.sh stop)
 scripts/sincronizar.sh    copia la página de la galería al estudio, valida los .json que cambiaron,
                           enciende el servidor si hace falta; avisa a Claude si un .json está roto
 scripts/galeria.sh        enciende, apaga y abre el servidor local de la galería (start, stop,

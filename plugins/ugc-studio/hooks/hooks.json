@@ -10,6 +10,16 @@
         ]
       }
     ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ ! -f \"${CLAUDE_PROJECT_DIR:-.}/studio.json\" ] || sh \"${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh\" stop >/dev/null"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit|Bash",

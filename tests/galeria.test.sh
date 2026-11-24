@@ -446,5 +446,40 @@ wait "$WAITER"
 check "live lock: once the holder is gone the launcher starts the server" "$?" "0"
 run "$H" stop
 
+# --- plugin hooks: SessionStart starts the server (reusing a running one), SessionEnd stops it ----
+# hook_command <event>: the first command of that event in hooks/hooks.json, as Claude Code runs it.
+hook_command() {
+  node -e 'const h = require(process.argv[1]).hooks[process.argv[2]]; process.stdout.write(h ? h[0].hooks[0].command : "")' \
+    "$CLAUDE_PLUGIN_ROOT/hooks/hooks.json" "$1"
+}
+# run_hook <event> <dir>: runs the hook command in that project; sets OUT, ERR and CODE.
+run_hook() {
+  cmd=$(hook_command "$1")
+  [ -n "$cmd" ] || { CODE=127; OUT=""; ERR="no $1 hook"; return; }
+  (cd "$2" && CLAUDE_PROJECT_DIR=$2 sh -c "$cmd" </dev/null >"$TMP/out" 2>"$TMP/err")
+  CODE=$?
+  OUT=$(cat "$TMP/out")
+  ERR=$(cat "$TMP/err")
+}
+
+K=$(new_studio hooks)
+run_hook SessionStart "$K"
+check "SessionStart hook: exit 0" "$CODE" "0"
+run "$K" status
+check "SessionStart hook: the server is running" "$CODE" "0"
+PIDK=$(state "$K" pid)
+run_hook SessionStart "$K"
+check "second SessionStart hook: reuses the running server" "$(state "$K" pid)" "$PIDK"
+run_hook SessionEnd "$K"
+check "SessionEnd hook: exit 0" "$CODE" "0"
+kill -0 "$PIDK" 2>/dev/null && fail "SessionEnd hook: process gone" || pass "SessionEnd hook: process gone"
+[ -e "$K/.galeria/servidor.json" ] && fail "SessionEnd hook: servidor.json removed" || pass "SessionEnd hook: servidor.json removed"
+run_hook SessionEnd "$K"
+check "SessionEnd hook, nothing running: exit 0" "$CODE" "0"
+run_hook SessionEnd "$TMP/plain"
+check "SessionEnd hook outside a studio: exit 0" "$CODE" "0"
+check "SessionEnd hook outside a studio: silent" "$OUT$ERR" ""
+[ -e "$TMP/plain/.galeria" ] && fail "SessionEnd hook outside a studio: no .galeria folder" || pass "SessionEnd hook outside a studio: no .galeria folder"
+
 printf '\n%s\n' "$([ $fails -eq 0 ] && echo 'All checks passed.' || echo "$fails check(s) failed.")"
 [ $fails -eq 0 ]

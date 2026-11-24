@@ -272,7 +272,9 @@ product; they share `batch`.
 
 The gallery is a local server, not a file: `sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open`
 starts it if needed and opens it in the browser (`start`, `stop`, `status` and `url` also exist).
-The session hook starts it by itself; it stops after 30 idle minutes (`UGC_GALERIA_IDLE_MIN`). It
+The session start hook starts it by itself (or reuses the one already running), the session end
+hook stops it, and it also stops after 30 idle minutes (`UGC_GALERIA_IDLE_MIN`). Closing any session
+of the studio stops the shared server; another open session starts it again on its next file write. It
 needs Node 18 or newer (`references/dependencias.md`), listens on `127.0.0.1` only and indexes the
 folders in memory, so nothing has to be rebuilt after saving a file. Double-clicking `galeria.html`
 only shows a notice. A server of an older plugin version (or of the same version from another
