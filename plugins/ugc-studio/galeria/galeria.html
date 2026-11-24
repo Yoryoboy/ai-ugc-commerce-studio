@@ -8,8 +8,8 @@
 <!-- Copied into the studio folder by the ugc-studio plugin. Do not edit the copy: it is replaced
      when the plugin updates. It needs the local gallery server (scripts/galeria.sh), which serves
      this page and the API it reads (/api/...) over http; opened as a file it only says how to
-     open it. The server sets an HttpOnly cookie when the page is opened with its token, so every
-     request here is same-origin with credentials and no token ever appears in this page. -->
+     open it. There is no access token: the server only answers requests that come from its own page
+     (Host, Sec-Fetch-Site, Origin), so every request here is a plain same-origin fetch. -->
 <style>
 :root {
   --bg: #f3f5f6; --surface: #ffffff; --sunken: #e8ecee; --line: #d5dcdf;
@@ -292,7 +292,7 @@ const RESERVADAS = new Set(["actores", "buscar", "elemento", "papelera"]);
 const SWATCH_ROLES = [["primary", "Principal"], ["accent", "Acento"], ["text", "Texto"], ["background", "Fondo"]];
 const CONN_MSG = {
   down: ["La galería se desconectó: pedile a Claude «abrí la galería»", "Mientras tanto no se puede aprobar, archivar ni borrar nada. Cuando vuelva, esta página se reconecta sola."],
-  token: ["Abrí la galería de nuevo desde Claude", "Esta pestaña quedó con un acceso viejo. Pedile a Claude «abrí la galería» y usá la pestaña nueva."],
+  acceso: ["Abrí la galería de nuevo desde Claude", "Esta pestaña quedó con un acceso viejo. Pedile a Claude «abrí la galería» y usá la pestaña nueva."],
 };
 // Actions of the selection bar and of the detail views: how they map to POST /api/acciones.
 const ACCION = {
@@ -395,7 +395,7 @@ async function api(path, opts) {
     setConn("down");
     throw new ApiError(0, "sin conexión");
   }
-  if (res.status === 401) { setConn("token"); throw new ApiError(401, "acceso vencido"); }
+  if (res.status === 401) { setConn("acceso"); throw new ApiError(401, "acceso vencido"); }
   let body = null;
   try { body = await res.json(); } catch (e) { /* not JSON */ }
   if (!res.ok) throw new ApiError(res.status, (body && body.error) || "HTTP " + res.status);
@@ -450,13 +450,13 @@ async function poll() {
     try {
       res = await fetch("/api/salud", { credentials: "same-origin", cache: "no-store", signal: limit.signal });
     } catch (e) { setConn("down"); return; } finally { limit.clear(); }
-    if (res.status === 401) { setConn("token"); return; }
+    if (res.status === 401) { setConn("acceso"); return; }
     if (!res.ok) { setConn("down"); return; }
     const salud = await res.json().catch(() => null);
     if (!salud) { setConn("down"); return; }
     if (salud.listo === false) return; // still scanning the studio: nothing to check yet
     const before = state.estudio ? JSON.stringify(state.estudio) : null;
-    // The server may answer /api/salud without the cookie: an authenticated call tells whether this tab still has access.
+    // A data call tells whether this tab can still read the studio (an old server answers 401 here).
     try { await loadEstudio(); } catch (e) { return; }
     // First data after the page was opened while the server was still indexing (503), or after a
     // reconnection: draw the current view, which still shows the empty "no data" state.
@@ -587,10 +587,10 @@ function mount(...nodes) {
 }
 
 function offlineEmpty() {
-  const token = state.conn === "token";
+  const viejo = state.conn === "acceso";
   return h("div", { class: "empty" },
-    h("h2", {}, token ? "Abrí la galería de nuevo desde Claude" : "No llega la información de la galería"),
-    h("p", { class: "muted" }, token ? "Esta pestaña quedó con un acceso viejo. Pedile a Claude: abrí la galería." : "Pedile a Claude: abrí la galería. Cuando el servidor vuelva, esta página se reconecta sola."));
+    h("h2", {}, viejo ? "Abrí la galería de nuevo desde Claude" : "No llega la información de la galería"),
+    h("p", { class: "muted" }, viejo ? "Esta pestaña quedó con un acceso viejo. Pedile a Claude: abrí la galería." : "Pedile a Claude: abrí la galería. Cuando el servidor vuelva, esta página se reconecta sola."));
 }
 
 function title(text) { document.title = text ? text + " · UGC Studio" : "UGC Studio"; }

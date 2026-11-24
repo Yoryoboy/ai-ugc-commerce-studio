@@ -227,12 +227,12 @@ scripts/galeria.sh        enciende, apaga y abre el servidor local de la galerí
                           ~/.ugc-studio/node
 servidor/servidor.mjs     el servidor de la galería (solo módulos de Node): indexa las carpetas en
                           memoria, sirve archivos y miniaturas, y aplica acciones (estado,
-                          archivar, papelera, restaurar); solo escucha en 127.0.0.1 con token
+                          archivar, papelera, restaurar); solo escucha en 127.0.0.1 y no acepta pedidos de otros sitios
 scripts/miniatura.sh      miniatura de un video (ffmpeg, o qlmanage + sips en Mac)
 scripts/componer.sh       pasa una plantilla de creativo a PNG con Google Chrome sin ventana
 scripts/exportar.sh       arma el paquete .zip de exportación con su manifest.json
 scripts/importar.sh       revisa un paquete, muestra qué trae y lo importa sin pisar nada
-galeria/galeria.html      la galería: la sirve el servidor, lee /datos.js y se recarga sola cada 3 segundos
+galeria/galeria.html      la galería: la sirve el servidor, lee su API y se recarga sola cada 3 segundos
 ```
 
 Los hooks se instalan con el plugin y no hacen nada en carpetas que no son un estudio (sin

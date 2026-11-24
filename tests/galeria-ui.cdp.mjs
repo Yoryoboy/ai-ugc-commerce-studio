@@ -94,7 +94,7 @@ json(".papelera/2020-01-01T000000Z-abcdef/papelera.json", { id: "2020-01-01T0000
 const srv = await crearServidor({ studio, port: 0, idleMin: 0, debounceMs: 40 });
 await srv.listo;
 const api = async (p, opts = {}) => {
-  const r = await fetch(`http://127.0.0.1:${srv.port}${p}`, { ...opts, headers: { "X-UGC-Token": srv.token, ...(opts.body ? { "Content-Type": "application/json" } : {}) } });
+  const r = await fetch(`http://127.0.0.1:${srv.port}${p}`, { ...opts, headers: { ...(opts.body ? { "Content-Type": "application/json" } : {}) } });
   return r.json();
 };
 const disk = (rel) => fs.existsSync(path.join(studio, rel));
@@ -172,7 +172,7 @@ async function openPage(init) {
 }
 const base = `http://127.0.0.1:${srv.port}`;
 async function login(page) {
-  await page.goto(`${base}/?t=${srv.token}`);
+  await page.goto(`${base}/`);
   await page.waitFor(`location.pathname === "/" && !location.search && !!document.querySelector(".tile")`, "the gallery to load");
 }
 

@@ -47,7 +47,7 @@ run() {
 }
 
 state() { sed -n "s/^ *\"$2\": *\"\{0,1\}\([^\",]*\)\"\{0,1\},\{0,1\} *\$/\1/p" "$1/.galeria/servidor.json" | head -n 1; }
-api() { curl -fsS -m 3 -H "X-UGC-Token: $(state "$1" token)" "http://127.0.0.1:$(state "$1" port)$2"; }
+api() { curl -fsS -m 3 "http://127.0.0.1:$(state "$1" port)$2"; }
 
 # --- outside a studio --------------------------------------------------------------------------
 mkdir -p "$TMP/plain"
@@ -73,15 +73,14 @@ case $OUT in http://127.0.0.1:[0-9]*/) pass "start: prints the address" ;; *) fa
 URL=$OUT
 PID=$(state "$S" pid)
 [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null && pass "start: server process is alive" || fail "start: server process is alive ($PID)"
-TOKEN=$(state "$S" token)
-check "start: prints the address without the token" "$URL" "http://127.0.0.1:$(state "$S" port)/"
+check "start: prints the plain address" "$URL" "http://127.0.0.1:$(state "$S" port)/"
 check "start: stderr empty" "$ERR" ""
-case "$OUT$ERR" in *"$TOKEN"* | *"?t="*) fail "start: the token is not printed" ;; *) pass "start: the token is not printed" ;; esac
+check "start: servidor.json has no token" "$(grep -c token "$S/.galeria/servidor.json")" "0"
 check "start: servidor.json records the plugin root" "$(sed -n 's/^ *"plugin": *"\(.*\)",\{0,1\} *$/\1/p' "$S/.galeria/servidor.json")" "$(cd "$CLAUDE_PLUGIN_ROOT" && pwd -P)"
 check "start: servidor.json mode" "$(stat -c %a "$S/.galeria/servidor.json" 2>/dev/null || stat -f %Lp "$S/.galeria/servidor.json")" "600"
 has "start: the server answers" "$(api "$S" /api/salud)" '"ok":true'
-has "start: health answers without a token, with no studio data" "$(curl -fsS "http://127.0.0.1:$(state "$S" port)/api/salud")" "\"pid\":$PID"
-case $(curl -fsS "http://127.0.0.1:$(state "$S" port)/api/salud") in *studio* | *entities* | *"$S"*) fail "health without a token leaks studio data" ;; *) pass "health without a token shows no studio data" ;; esac
+has "start: health answers, with the pid" "$(curl -fsS "http://127.0.0.1:$(state "$S" port)/api/salud")" "\"pid\":$PID"
+check "start: the plain address serves the page, no token needed" "$(curl -s -o /dev/null -w '%{http_code}' "$URL")" "200"
 check "start: own process group" "$(ps -o pgid= -p "$PID" | tr -d ' ')" "$PID"
 
 run "$S" start
@@ -91,10 +90,11 @@ check "second start: same process" "$(state "$S" pid)" "$PID"
 run "$S" status
 check "status: exit 0" "$CODE" "0"
 has "status: running" "$OUT" "running"
-case $OUT in *"$TOKEN"*) fail "status: the token is not printed" ;; *) pass "status: the token is not printed" ;; esac
 run "$S" url
-check "url: prints the address with the token (for the user)" "$OUT" "$URL?t=$TOKEN"
-check "url: the help says not to paste it into a chat" "$(CLAUDE_PROJECT_DIR=$S sh "$SCRIPT" 2>&1 | grep -c 'never paste')" "1"
+check "url: exit 0" "$CODE" "0"
+check "url: prints the plain address" "$OUT" "$URL"
+check "url: stderr empty" "$ERR" ""
+check "usage: the help mentions no token" "$(CLAUDE_PROJECT_DIR=$S sh "$SCRIPT" 2>&1 | grep -ci 'token\|never paste')" "0"
 
 run "$S" stop
 check "stop: exit 0" "$CODE" "0"
@@ -190,45 +190,43 @@ run_nonode "$N" stop
 rm -f "$BIN/node"
 
 # --- open ---------------------------------------------------------------------------------------
-# The browser is given a file (.galeria/abrir.html, mode 600) that redirects to the tokened
-# address, so the token is never in a command line or in the output.
+# The browser is given the plain address (no token, no redirect file).
 O=$(new_studio open)
 mkdir -p "$TMP/fakebin"
 for opener in open xdg-open; do
   printf '#!/bin/sh\nprintf "%%s\\n" "$@" >"%s/opened"\n' "$TMP" >"$TMP/fakebin/$opener"
   chmod +x "$TMP/fakebin/$opener"
 done
-# A curl that logs its arguments, to prove the health probe does not carry the token.
+# A curl that logs its arguments, to prove the health probe goes through curl.
 REALCURL=$(command -v curl)
 printf '#!/bin/sh\nprintf "%%s\\n" "$@" >>"%s/curl-args"\nexec "%s" "$@"\n' "$TMP" "$REALCURL" >"$TMP/fakebin/curl"
 chmod +x "$TMP/fakebin/curl"
+# A redirect page left by a 0.5.x launcher is removed.
+mkdir -p "$O/.galeria"
+printf '<meta http-equiv="refresh" content="0;url=http://127.0.0.1:1/?t=old">\n' >"$O/.galeria/abrir.html"
 CLAUDE_PROJECT_DIR=$O PATH="$TMP/fakebin:$PATH" sh "$SCRIPT" open >"$TMP/out" 2>"$TMP/err"
 check "open: exit 0" "$?" "0"
 sleep 0.3
-OTOKEN=$(state "$O" token)
-OPENED="$O/.galeria/abrir.html"
-check "open: the browser got the redirect file, nothing else" "$(cat "$TMP/opened" 2>/dev/null)" "$OPENED"
-check "open: abrir.html mode" "$(stat -c %a "$OPENED" 2>/dev/null || stat -f %Lp "$OPENED")" "600"
-has "open: abrir.html redirects to the tokened address" "$(cat "$OPENED")" "http://127.0.0.1:$(state "$O" port)/?t=$OTOKEN"
-has "open: says where the gallery is" "$(cat "$TMP/out")" "http://127.0.0.1:$(state "$O" port)/"
-case "$(cat "$TMP/out" "$TMP/err")" in *"$OTOKEN"* | *"?t="*) fail "open: the token is not printed" ;; *) pass "open: the token is not printed" ;; esac
+OADDR="http://127.0.0.1:$(state "$O" port)/"
+check "open: the browser got the plain address, nothing else" "$(cat "$TMP/opened" 2>/dev/null)" "$OADDR"
+[ -e "$O/.galeria/abrir.html" ] && fail "open: no abrir.html (the stale one is removed)" || pass "open: no abrir.html (the stale one is removed)"
+has "open: says where the gallery is" "$(cat "$TMP/out")" "$OADDR"
+check "open: stderr empty" "$(cat "$TMP/err")" ""
 [ -s "$TMP/curl-args" ] && pass "open: the health probe went through curl" || fail "open: the health probe went through curl"
-case $(cat "$TMP/curl-args") in *"$OTOKEN"* | *Token*) fail "open: the token is not in curl's arguments" ;; *) pass "open: the token is not in curl's arguments" ;; esac
-CLAUDE_PROJECT_DIR=$O PATH="$TMP/fakebin:$PATH" sh "$SCRIPT" start >/dev/null 2>&1
-CLAUDE_PROJECT_DIR=$O PATH="$TMP/fakebin:$PATH" sh "$SCRIPT" status >/dev/null 2>&1
-case $(cat "$TMP/curl-args") in *"$OTOKEN"*) fail "start and status: the token is not in curl's arguments" ;; *) pass "start and status: the token is not in curl's arguments" ;; esac
-# A second open after a restart writes the new token.
+case "$(cat "$TMP/out" "$TMP/err" "$TMP/curl-args")" in *"?t="*) fail "open: no token query anywhere" ;; *) pass "open: no token query anywhere" ;; esac
+# A second open after a restart opens the address of the new server.
 run "$O" stop
+rm -f "$TMP/opened"
 CLAUDE_PROJECT_DIR=$O PATH="$TMP/fakebin:$PATH" sh "$SCRIPT" open >/dev/null 2>&1
 sleep 0.3
-has "open after a restart: abrir.html has the new token" "$(cat "$OPENED")" "?t=$(state "$O" token)"
-[ "$(state "$O" token)" != "$OTOKEN" ] && pass "open after a restart: the token changed" || fail "open after a restart: the token changed"
-check "open after a restart: abrir.html mode" "$(stat -c %a "$OPENED" 2>/dev/null || stat -f %Lp "$OPENED")" "600"
-# Without a browser opener it says which file to open, still without the token.
+check "open after a restart: the browser got the new address" "$(cat "$TMP/opened" 2>/dev/null)" "http://127.0.0.1:$(state "$O" port)/"
+[ -e "$O/.galeria/abrir.html" ] && fail "open after a restart: no abrir.html" || pass "open after a restart: no abrir.html"
+# Without a browser opener it prints the address.
 rm -f "$TMP/opened"
 CLAUDE_PROJECT_DIR=$O PATH="$BIN" sh "$SCRIPT" open >"$TMP/out" 2>"$TMP/err"
-has "open without an opener: names the file" "$(cat "$TMP/out")" "$OPENED"
-case "$(cat "$TMP/out")" in *"?t="*) fail "open without an opener: no token in the message" ;; *) pass "open without an opener: no token in the message" ;; esac
+check "open without an opener: exit 0" "$?" "0"
+has "open without an opener: prints the address" "$(cat "$TMP/out")" "http://127.0.0.1:$(state "$O" port)/"
+[ -e "$TMP/opened" ] && fail "open without an opener: nothing was opened" || pass "open without an opener: nothing was opened"
 run "$O" stop
 
 # --- a server from another plugin version or folder is replaced ----------------------------------
@@ -317,10 +315,15 @@ check "older plugin, newer server: start exits 0" "$CODE" "0"
 check "older plugin, newer server: the server is kept" "$(state "$F" pid)" "$PIDA"
 check "older plugin, newer server: it prints that server's address" "$OUT" "$URLA"
 check "older plugin, newer server: the version recorded is still the newer one" "$(state "$F" version)" "$PLUGIN_VERSION"
+rm -f "$TMP/opened"
+SAVED_PATH=$PATH
+PATH="$TMP/fakebin:$PATH"
 as_plugin plugin-0.0.1 "$F" open
+PATH=$SAVED_PATH
 check "older plugin, newer server: open uses the running server" "$CODE" "0"
 check "older plugin, newer server: open kept the server" "$(state "$F" pid)" "$PIDA"
-has "older plugin, newer server: open points to its tokened address" "$(cat "$F/.galeria/abrir.html")" "?t=$(state "$F" token)"
+sleep 0.3
+check "older plugin, newer server: open opens its address" "$(cat "$TMP/opened" 2>/dev/null)" "$URLA"
 as_plugin plugin-0.0.1 "$F" status
 check "older plugin, newer server: status says running" "$CODE" "0"
 # Same version from another folder: replaced (the folder of the server may be the stale one).
@@ -377,8 +380,7 @@ t0=$(date +%s)
 CLAUDE_PROJECT_DIR=$K PATH="$BIN2" sh "$SCRIPT" open >"$TMP/out" 2>"$TMP/err"
 check "open without curl or wget: exit 0" "$?" "0"
 [ $(($(date +%s) - t0)) -le 3 ] && pass "open without curl or wget: does not wait 10 s for the scan" || fail "open without curl or wget: does not wait 10 s for the scan ($(($(date +%s) - t0)) s)"
-has "open without curl or wget: names the file to open" "$(cat "$TMP/out")" "$K/.galeria/abrir.html"
-has "open without curl or wget: abrir.html has the address" "$(cat "$K/.galeria/abrir.html")" "?t=$(state "$K" token)"
+has "open without curl or wget: prints the address" "$(cat "$TMP/out")" "http://127.0.0.1:$(state "$K" port)/"
 run "$K" stop
 
 # --- slow start: the server listens first, the launchers neither fail nor duplicate it -----------
@@ -394,7 +396,7 @@ check "slow scan: all print the same address" "$(cat "$TMP"/s?.out | sort -u | w
 check "slow scan: nothing on stderr" "$(cat "$TMP"/s?.err)" ""
 check "slow scan: one server" "$(ps -eo command | grep -c "[s]ervidor.mjs --studio $L\$")" "1"
 check "slow scan: not ready yet (listo false)" "$(curl -fsS "http://127.0.0.1:$(state "$L" port)/api/salud" | grep -c '"listo":false')" "1"
-check "slow scan: data answers 503 meanwhile" "$(curl -s -o /dev/null -w '%{http_code}' -H "X-UGC-Token: $(state "$L" token)" "http://127.0.0.1:$(state "$L" port)/api/estudio")" "503"
+check "slow scan: data answers 503 meanwhile" "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$(state "$L" port)/api/estudio")" "503"
 check "slow scan: a launcher run meanwhile keeps the same server" "$(CLAUDE_PROJECT_DIR=$L sh "$SCRIPT" start >/dev/null 2>&1; state "$L" pid)" "$(state "$L" pid)"
 i=0
 until curl -fsS "http://127.0.0.1:$(state "$L" port)/api/salud" | grep -q '"listo":true' || [ $i -ge 100 ]; do i=$((i + 1)); sleep 0.1; done

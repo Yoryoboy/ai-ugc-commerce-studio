@@ -44,9 +44,9 @@ state() { sed -n "s/^ *\"$2\": *\"\{0,1\}\([^\",]*\)\"\{0,1\},\{0,1\} *\$/\1/p" 
 
 # Asks the studio's server (what the gallery shows): node expression `r` over the JSON answer of the path.
 api() {
-  node -e 'fetch("http://127.0.0.1:" + process.argv[1] + process.argv[3], { headers: { "X-UGC-Token": process.argv[2] } })
-    .then((r) => r.json()).then((r) => console.log(eval(process.argv[4])))' \
-    "$(state "$1" port)" "$(state "$1" token)" "$2" "$3"
+  node -e 'fetch("http://127.0.0.1:" + process.argv[1] + process.argv[2])
+    .then((r) => r.json()).then((r) => console.log(eval(process.argv[3])))' \
+    "$(state "$1" port)" "$2" "$3"
 }
 
 # Pause so file times differ from the validation marker (some file systems keep whole seconds).
@@ -79,12 +79,10 @@ case $OUT in *"Actors: 1. Products: 1. Videos: 1 (storyboard 0, draft 1"*) pass 
 cmp -s "$CLAUDE_PLUGIN_ROOT/galeria/galeria.html" "$S/galeria.html" && pass "gallery copied" || fail "gallery copied"
 case $OUT in *"Gallery: http://127.0.0.1:"[0-9]*"/ "*) pass "summary: gallery address" ;; *) fail "summary: gallery address ($OUT)" ;; esac
 has "summary: says to ask for the gallery" "$OUT" "abrí la galería"
-TOKEN=$(state "$S" token)
-[ -n "$TOKEN" ] && pass "the server has a token" || fail "the server has a token"
-case "$OUT$ERR" in *"$TOKEN"* | *"?t="*) fail "summary: the access token is never printed" ;; *) pass "summary: the access token is never printed" ;; esac
-case $(cat "$TMP/err") in *"$TOKEN"*) fail "summary: no token on stderr" ;; *) pass "summary: no token on stderr" ;; esac
-run "$S"
-case "$OUT$ERR" in *"$TOKEN"* | *"?t="*) fail "hook run: the access token is never printed" ;; *) pass "hook run: the access token is never printed" ;; esac
+has "summary: the address can be opened directly" "$OUT" "the address can be opened directly"
+has "summary: points to galeria.sh open" "$OUT" 'galeria.sh" open'
+case "$OUT$ERR" in *token* | *"?t="* | *"never print"*) fail "summary: no mention of an access token or link" ;; *) pass "summary: no mention of an access token or link" ;; esac
+check "the server has no token" "$(grep -c token "$S/.galeria/servidor.json")" "0"
 [ -e "$S/.galeria/datos.js" ] && fail "no datos.js is built" || pass "no datos.js is built"
 [ -f "$S/.galeria/validado" ] && pass "validation marker written" || fail "validation marker written"
 has "the hook started the gallery server" "$(api "$S" /api/salud 'r.ok + " " + r.entities')" "true 3"
