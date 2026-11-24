@@ -140,6 +140,7 @@ UGC Studio/
 ├── importaciones/  dejá acá los paquetes que te pasan (opcional)
 ├── studio.json     configuración del estudio (no lo borres)
 ├── .galeria/       datos internos de la galería y del servidor, se arman solos (carpeta oculta)
+├── .claude/        launch.json: la galería en el panel del navegador de la app, lo escribe el servidor
 └── .papelera/      lo que borrás desde la galería, se puede restaurar (carpeta oculta)
 ```
 
@@ -250,7 +251,9 @@ references/engram.md      cómo instalar la memoria persistente (Engram); lo sig
 references/plantillas/    la plantilla HTML de los creativos con texto puesto encima
 hooks/hooks.json          al abrir la sesión y después de cada archivo que escribe Claude,
                           corre scripts/sincronizar.sh (enciende la galería o usa la que ya
-                          corre); al cerrar la sesión apaga la galería (galeria.sh stop)
+                          corre). La galería es una sola para todas las sesiones del
+                          estudio: no se apaga al cerrar una sesión, sino sola tras 30
+                          minutos sin uso
 hooks/ugc-studio.mjs      el mod: la guardia de gasto (frena cada generación de Higgsfield y
                           pregunta Generar / Pasar a borrador / Cancelar) y el medidor de créditos
                           (la franja de arriba del prompt)

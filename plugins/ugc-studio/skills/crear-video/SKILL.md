@@ -82,7 +82,7 @@ version got every shot right on the first try. Ad Multiplier and `video_edit` di
    script, scene count and the credits spent so far. Save the frames as `escena-1.png` … and a
    side-by-side `storyboard.jpg`. Look at each one yourself; regenerate only the frame that is
    wrong.
-6. Tell the user the storyboard is in the gallery (to open it for them run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/galeria.sh" open`; they can also ask "abrí la galería") and
+6. Tell the user the storyboard is in the gallery (to open it for them follow "To open the gallery" in `workspace.md`, Gallery server; they can also ask "abrí la galería") and
    ask: **Aprobar** (go to the video) or **Cambiar una escena** (say which; regenerate only that
    one and overwrite its `escena-N.png`).
 

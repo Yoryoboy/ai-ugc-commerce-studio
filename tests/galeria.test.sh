@@ -448,7 +448,7 @@ wait "$WAITER"
 check "live lock: once the holder is gone the launcher starts the server" "$?" "0"
 run "$H" stop
 
-# --- plugin hooks: SessionStart starts the server (reusing a running one), SessionEnd stops it ----
+# --- plugin hooks: SessionStart starts the server (reusing a running one); none stops it ----
 # hook_command <event>: the first command of that event in hooks/hooks.json, as Claude Code runs it.
 hook_command() {
   node -e 'const h = require(process.argv[1]).hooks[process.argv[2]]; process.stdout.write(h ? h[0].hooks[0].command : "")' \
@@ -472,21 +472,15 @@ check "SessionStart hook: the server is running" "$CODE" "0"
 PIDK=$(state "$K" pid)
 run_hook SessionStart "$K"
 check "second SessionStart hook: reuses the running server" "$(state "$K" pid)" "$PIDK"
-run_hook SessionEnd "$K"
-check "SessionEnd hook: exit 0" "$CODE" "0"
-kill -0 "$PIDK" 2>/dev/null && fail "SessionEnd hook: process gone" || pass "SessionEnd hook: process gone"
-[ -e "$K/.galeria/servidor.json" ] && fail "SessionEnd hook: servidor.json removed" || pass "SessionEnd hook: servidor.json removed"
-run_hook SessionEnd "$K"
-check "SessionEnd hook, nothing running: exit 0" "$CODE" "0"
-run_hook SessionEnd "$TMP/plain"
-check "SessionEnd hook outside a studio: exit 0" "$CODE" "0"
-check "SessionEnd hook outside a studio: silent" "$OUT$ERR" ""
-[ -e "$TMP/plain/.galeria" ] && fail "SessionEnd hook outside a studio: no .galeria folder" || pass "SessionEnd hook outside a studio: no .galeria folder"
+# No session end hook: closing one session must not stop the server the other sessions of the
+# studio share. The server stops by itself after UGC_GALERIA_IDLE_MIN minutes without requests.
+check "no SessionEnd hook: closing a session leaves the shared server alone" "$(hook_command SessionEnd)" ""
+kill -0 "$PIDK" 2>/dev/null && pass "no SessionEnd hook: the shared server keeps running" || fail "no SessionEnd hook: the shared server keeps running"
 
 # Outside a studio every hook returns before touching a plugin script: run them with a plugin root
 # that has no scripts, so reaching a script would fail.
 mkdir -p "$TMP/no-scripts"
-for event in SessionStart PostToolUse SessionEnd; do
+for event in SessionStart PostToolUse; do
   cmd=$(hook_command "$event")
   (cd "$TMP/plain" && CLAUDE_PROJECT_DIR=$TMP/plain CLAUDE_PLUGIN_ROOT=$TMP/no-scripts sh -c "$cmd" \
     </dev/null >"$TMP/out" 2>"$TMP/err")

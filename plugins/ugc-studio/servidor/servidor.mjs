@@ -233,6 +233,45 @@ function derivar(e) {
   e.tituloNorm = norm(e.titulo);
 }
 
+// ---------- port memory and .claude/launch.json ----------
+
+function escribirAtomico(file, contenido) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp-${process.pid}`;
+  fs.writeFileSync(tmp, contenido);
+  fs.renameSync(tmp, file);
+}
+
+// The port recorded by the last server of this studio, or null.
+function leerUltimoPuerto(file) {
+  try {
+    const n = Number(fs.readFileSync(file, "utf8").trim());
+    return Number.isInteger(n) && n > 0 && n < 65536 ? n : null;
+  } catch { return null; }
+}
+
+// Points the "galeria" configuration of <studio>/.claude/launch.json at this server, so the
+// Claude desktop app can open the gallery in its browser pane (preview_start "galeria"). It has a
+// url and no command: it attaches to the running server, never starts one. Other configurations
+// and fields are kept; a file that is not valid JSON is left as it is. Written only when it changes.
+const LAUNCH_NOMBRE = "galeria";
+function actualizarLaunch(raiz, puerto) {
+  const file = path.join(raiz, ".claude", "launch.json");
+  let actual = null;
+  let datos = { version: "0.0.1", configurations: [] };
+  try { actual = fs.readFileSync(file, "utf8"); } catch (err) { if (err.code !== "ENOENT") throw err; }
+  if (actual !== null) {
+    try { datos = JSON.parse(actual); } catch { throw new Error("it is not valid JSON; left as it is"); }
+    if (!datos || typeof datos !== "object" || Array.isArray(datos)) throw new Error("unexpected shape; left as it is");
+    if (!Array.isArray(datos.configurations)) datos.configurations = [];
+  }
+  const entrada = { name: LAUNCH_NOMBRE, port: puerto, url: `http://127.0.0.1:${puerto}` };
+  const i = datos.configurations.findIndex((c) => c && c.name === LAUNCH_NOMBRE);
+  if (i === -1) datos.configurations.push(entrada); else datos.configurations[i] = entrada;
+  const nuevo = JSON.stringify(datos, null, 2) + "\n";
+  if (nuevo !== actual) escribirAtomico(file, nuevo);
+}
+
 // ---------- server ----------
 
 export async function crearServidor(opts = {}) {
@@ -253,6 +292,7 @@ export async function crearServidor(opts = {}) {
   })();
   const inicio = isoSeg(); // this process's start, recorded in servidor.json to recognise it on close
   const estadoFile = path.join(raiz, ".galeria", "servidor.json");
+  const puertoFile = path.join(raiz, ".galeria", "puerto"); // last port used; outlives the server
   const abs = (rel) => path.join(raiz, ...rel.split("/"));
 
   // ----- index -----
@@ -1157,8 +1197,12 @@ export async function crearServidor(opts = {}) {
   server.on("connection", (s) => { sockets.add(s); s.on("close", () => sockets.delete(s)); });
   server.on("clientError", (err, s) => { if (s.writable) s.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n"); });
 
-  // First free port from the base (4317 … 4337); base 0 asks the system for any.
+  // First free port from the base (4317 … 4337); base 0 asks the system for any. The port this
+  // studio used last goes first, so a restart keeps its address (and .claude/launch.json) whenever
+  // that port is still free.
   const intentos = basePort === 0 ? [0] : Array.from({ length: PORT_TRIES }, (_, i) => basePort + i);
+  const ultimo = leerUltimoPuerto(puertoFile);
+  if (intentos.includes(ultimo)) intentos.unshift(...intentos.splice(intentos.indexOf(ultimo), 1));
   let ok = false;
   for (const p of intentos) {
     try {
@@ -1218,6 +1262,9 @@ export async function crearServidor(opts = {}) {
   fs.writeFileSync(tmpEstado, JSON.stringify({ pid: process.pid, port: puerto, startedAt: inicio, version, plugin: pluginRaiz }, null, 2) + "\n", { mode: 0o600 });
   fs.chmodSync(tmpEstado, 0o600);
   fs.renameSync(tmpEstado, estadoFile);
+  // Neither of these is needed to serve the gallery: a failure is logged, never fatal.
+  try { escribirAtomico(puertoFile, `${puerto}\n`); } catch (err) { console.error("servidor: could not record the port:", err.message); }
+  try { actualizarLaunch(raiz, puerto); } catch (err) { console.error("servidor: could not update .claude/launch.json:", err.message); }
 
   async function cerrar() {
     if (cerrado) return;
