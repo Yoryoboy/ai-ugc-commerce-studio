@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/sincronizar.sh\" --resumen"
+            "command": "[ ! -f \"${CLAUDE_PROJECT_DIR:-.}/studio.json\" ] || sh \"${CLAUDE_PLUGIN_ROOT}/scripts/sincronizar.sh\" --resumen"
           }
         ]
       }
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/sincronizar.sh\""
+            "command": "[ ! -f \"${CLAUDE_PROJECT_DIR:-.}/studio.json\" ] || sh \"${CLAUDE_PLUGIN_ROOT}/scripts/sincronizar.sh\""
           }
         ]
       }

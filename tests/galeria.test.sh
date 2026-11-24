@@ -483,5 +483,21 @@ check "SessionEnd hook outside a studio: exit 0" "$CODE" "0"
 check "SessionEnd hook outside a studio: silent" "$OUT$ERR" ""
 [ -e "$TMP/plain/.galeria" ] && fail "SessionEnd hook outside a studio: no .galeria folder" || pass "SessionEnd hook outside a studio: no .galeria folder"
 
+# Outside a studio every hook returns before touching a plugin script: run them with a plugin root
+# that has no scripts, so reaching a script would fail.
+mkdir -p "$TMP/no-scripts"
+for event in SessionStart PostToolUse SessionEnd; do
+  cmd=$(hook_command "$event")
+  (cd "$TMP/plain" && CLAUDE_PROJECT_DIR=$TMP/plain CLAUDE_PLUGIN_ROOT=$TMP/no-scripts sh -c "$cmd" \
+    </dev/null >"$TMP/out" 2>"$TMP/err")
+  check "$event hook outside a studio: runs no script (exit 0)" "$?" "0"
+  check "$event hook outside a studio: runs no script (silent)" "$(cat "$TMP/out" "$TMP/err")" ""
+done
+run_hook PostToolUse "$K"
+check "PostToolUse hook in a studio: exit 0" "$CODE" "0"
+run "$K" status
+check "PostToolUse hook in a studio: the server is running" "$CODE" "0"
+run "$K" stop >/dev/null
+
 printf '\n%s\n' "$([ $fails -eq 0 ] && echo 'All checks passed.' || echo "$fails check(s) failed.")"
 [ $fails -eq 0 ]
