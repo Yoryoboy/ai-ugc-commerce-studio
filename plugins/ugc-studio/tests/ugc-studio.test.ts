@@ -29,6 +29,8 @@ type World = {
 type Setup = {
   /** Is the cwd a studio? Default true. */
   studio?: boolean
+  /** Asked on every check instead of `studio`, for a studio.json that appears mid-session. */
+  studioNow?: () => boolean
   /** studio.json content. */
   studioJson?: unknown
   /** What the question is answered with; 'dismiss' makes ask reject. */
@@ -57,7 +59,7 @@ function world(on: any, setup: Setup = {}): World {
 
   on('session.start', () => ({ cwd: '/studio' }))
   on('session.cwd', () => ({ value: '/studio' }))
-  on('fs.exists', ($: any, e: any) => ({ value: isStudio && e.path === '/studio/studio.json' }))
+  on('fs.exists', ($: any, e: any) => ({ value: (setup.studioNow ? setup.studioNow() : isStudio) && e.path === '/studio/studio.json' }))
   on('fs.read', ($: any, e: any) => {
     const key = Object.keys(files).find((k) => e.path === `/studio/${k}`)
     return key === undefined ? { deny: `no such file ${e.path}` } : { value: JSON.stringify(files[key]) }
@@ -140,6 +142,30 @@ test('outside a studio a generation passes with no question and nothing is drawn
   expect(out.result).toEqual([text(submitted)])
   expect(w.balanceCalls).toBe(0)
   expect(await bandText($)).toBe(null)
+})
+
+test('a studio.json created after the session started turns on the guard for the next generation', async ($, on) => {
+  let exists = false
+  const w = world(on, { studioNow: () => exists, price: () => 80 })
+  await $.session.start(START)
+  exists = true
+  await $.tool.call({ tool: VIDEO, params: NEW_VIDEO })
+
+  expect(w.asks).toHaveLength(1)
+  expect(w.asks[0].options).toContain('Generar')
+  expect(w.generated).toHaveLength(1)
+})
+
+test('a studio.json written by a tool after the session started brings the band up', async ($, on) => {
+  let exists = false
+  const w = world(on, { studioNow: () => exists })
+  await $.session.start(START)
+  expect(await bandText($)).toBe(null)
+  exists = true
+  await $.tool.call({ tool: 'Write', file_path: '/studio/studio.json', content: '{}' })
+
+  expect(await bandText($)).toBe('◆ UGC Studio  sesión 0 cr · saldo 1000 cr')
+  expect(w.asks).toEqual([])
 })
 
 test('a get_cost call passes without a question and counts nothing', async ($, on) => {

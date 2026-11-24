@@ -9,10 +9,14 @@ The user is usually not a programmer. Talk in Spanish (Rioplatense, warm, short)
 recommend, they pick. Never spend credits without telling them the exact cost first.
 
 Shared files are in `${CLAUDE_PLUGIN_ROOT}/references/`: `claims-rules.md`, `costs.md`, `producto.md`,
-`prompts/ugc-video.md` and `workspace.md`, the contract for where every file goes. Save every
+`prompts/ugc-video.md`, `memoria.md` and `workspace.md`, the contract for where every file goes. Save every
 file exactly where it says: the gallery shows the work from the folders and
 updates by itself, so the user can follow along there. Read `studio.json` first; if it is
 missing, run `setup`.
+
+**Memory.** Follow `memoria.md` at three moments: search it once the product is known, save
+after every decision the user makes, and save the video at the close. Skip it silently if
+Engram is not available.
 
 ## 1. Product
 
@@ -38,6 +42,8 @@ not available), recommended first. Each idea has, in its description:
 - what changes between ideas: one dimension at a time (hook, angle or format).
 
 Every product statement must be in the allowed list. Default duration 15 s unless the user asks.
+Once they pick, save the chosen idea and the rejected ones, with the reason if they gave one
+(`memoria.md`).
 
 Write lines the video model can pronounce: short everyday words, no uncommon conjugations or
 technical terms when a simpler phrase says the same (the model mispronounced "se enroscan";
@@ -120,9 +126,11 @@ Then tell the user what you saw, that it is in the gallery (every version stays 
     the hook gave no visible improvement (15 credits).
 - **Descartar** → set `status: discarded` in `video.json`. Keep the files.
 
-They judge the audio (voice, accent, lip-sync); you cannot hear it, so ask.
+They judge the audio (voice, accent, lip-sync); you cannot hear it, so ask. Save each verdict
+with what failed and what fixed it (`memoria.md`).
 
 ## 8. Close
 
+Save the video's summary to memory (`memoria.md`: idea, actor, versions, credits, what worked).
 Summarize: video, status, total credits for this video, and where to see it (the gallery, and
 Higgsfield for the original files).

@@ -43,8 +43,23 @@ export function register(on) {
     return result;
   });
 
+  // setup can create studio.json after the session started: look again after
+  // any tool that writes files, so the band comes up without a new session.
+  on("tool.call", { tool: /^(Write|Edit|MultiEdit|Bash)$/ }, async ($, e, next) => {
+    const result = await next(e);
+    if (!studio) {
+      await loadStudio($);
+      if (studio) {
+        $.ui.invalidate("ui.render");
+      }
+    }
+    return result;
+  });
+
   on("tool.call", { tool: /^mcp__.+__generate_(video|image)(_batch)?$/ }, async ($, e, next) => {
-    if (studio === undefined) {
+    // Not a studio yet is checked again on every generation: a studio found
+    // late must never let a generation through without the question.
+    if (!studio) {
       await loadStudio($);
     }
     if (studio === null || isPriceCheck(e)) {

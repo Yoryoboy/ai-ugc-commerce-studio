@@ -9,10 +9,14 @@ The user is usually not a programmer. Talk in Spanish (Rioplatense, warm, short)
 recommend, they pick. Never spend credits without telling them the exact cost first.
 
 Shared files are in `${CLAUDE_PLUGIN_ROOT}/references/`: `workspace.md` (where every file goes),
-`producto.md`, `meta-ads.md`, `claims-rules.md`, `costs.md` and `prompts/creativo-imagen.md`.
+`producto.md`, `meta-ads.md`, `claims-rules.md`, `costs.md`, `memoria.md` and `prompts/creativo-imagen.md`.
 Save every file exactly where `workspace.md` says: the gallery shows the work from the folders
 and updates by itself. Read `studio.json` first; if it is missing, run `setup`. We never upload
 to Meta: another MCP does that.
+
+**Memory.** Follow `memoria.md` at three moments: search it once the product is known, save
+after every decision the user makes, and save the batch at the close. Skip it silently if Engram
+is not available.
 
 ## 1. Product
 
@@ -47,8 +51,8 @@ If there is no kit, build it from what the client already has defined, not from 
 5. **Fill the gaps** only for what no reference says: propose it from the product photos and the
    store (Google Fonts names, `google: true`), and mark it as proposed when you show it.
 6. Show a short summary (colors with their hex, fonts, logo versions, tone, rules, and what was
-   proposed vs. taken from a source). When the user confirms, write `marca.json`. Do not ask
-   again next time.
+   proposed vs. taken from a source). When the user confirms, write `marca.json` and save the
+   kit and the client's taste to memory (`memoria.md`). Do not ask again next time.
 
 Use the kit in the rest of the batch: `tone`, `audience`, `dos` and `donts` guide the copy and the
 concepts, and the image prompts follow the colors and rules.
@@ -67,7 +71,8 @@ type (static, or carousel with N cards), text mode (template with its layout, or
 copy (primary text ≤ 125, headline ≤ 40, description ≤ 30, CTA), `adName`, and why it differs.
 Choose an actor with the `actores/*/actor.json` niches when a concept uses a person. Every product
 statement must be an allowed claim, and nothing may break the policy list in `meta-ads.md`.
-The user approves, removes or edits concepts; nothing is generated before that.
+The user approves, removes or edits concepts; nothing is generated before that. Save what was
+chosen and rejected, and why (`memoria.md`).
 
 ## 4. Cost → decision 2
 
@@ -126,10 +131,11 @@ Tell the user the batch is in the gallery (Creativos) and what you saw. Per crea
   card at a time; keep the same family.
 - **Descartar** → `status: discarded`. Keep the files.
 
-Update `creativo.json` and `credits` in `studio.json` after every change.
+Update `creativo.json` and `credits` in `studio.json` after every change, and save each verdict
+with what failed and what fixed it (`memoria.md`).
 
 ## 8. Close
 
 For each approved creative list, ready for the MCP that uploads to Meta: the files in order (4:5
 and 9:16, or cards 1…N), the `adName` and the copy (primary text, headline, description, CTA).
-Add total credits of the batch and where to see everything (the gallery: open it following `workspace.md`, "Open the gallery"). Do not upload anything.
+Save the batch summary to memory (`memoria.md`). Add total credits of the batch and where to see everything (the gallery: open it following `workspace.md`, "Open the gallery"). Do not upload anything.
