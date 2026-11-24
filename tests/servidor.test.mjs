@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLUGIN = path.join(REPO, "plugins", "ugc-studio");
 const SERVIDOR = path.join(PLUGIN, "servidor", "servidor.mjs");
-const { crearServidor } = await import(SERVIDOR);
+const { crearServidor, PORT_TRIES } = await import(SERVIDOR);
 
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -1540,13 +1540,28 @@ describe("process", () => {
 });
 
 describe("stable port and .claude/launch.json", () => {
-  // A base port with the whole range free, as far as can be told: the system picks one, then it is freed.
-  async function baseLibre() {
+  // A base port whose whole range (PORT_TRIES ports, like 4317 … 4337) is free right now. It is
+  // searched below 32768, outside the ephemeral range the system hands to client sockets (Linux
+  // 32768-60999, macOS 49152-65535), so the sockets of concurrent tests cannot take a port of the
+  // range between two servers of one test. The start depends on the pid so parallel test files
+  // look in different places.
+  async function puertoLibre(p) {
     const s = net.createServer();
-    await new Promise((r) => s.listen(0, "127.0.0.1", r));
-    const p = s.address().port;
+    try {
+      await new Promise((res, rej) => { s.once("error", rej); s.listen(p, "127.0.0.1", res); });
+    } catch { return false; }
     await new Promise((r) => s.close(r));
-    return Math.min(p, 65535 - 21);
+    return true;
+  }
+  async function baseLibre() {
+    const paso = PORT_TRIES + 1;
+    for (let n = 0, base = 20000 + (process.pid % 200) * paso; n < 500; n++, base += paso) {
+      if (base + PORT_TRIES > 32768) base = 20000;
+      let libre = true;
+      for (let i = 0; i < PORT_TRIES && libre; i++) libre = await puertoLibre(base + i);
+      if (libre) return base;
+    }
+    throw new Error("no free port range below 32768");
   }
   const leerLaunch = (studio) => JSON.parse(fs.readFileSync(path.join(studio, ".claude", "launch.json"), "utf8"));
 
@@ -1568,6 +1583,14 @@ describe("stable port and .claude/launch.json", () => {
     const srv2 = await crearServidor({ studio, port: base, idleMin: 0 });
     servers.push(srv2);
     assert.equal(srv2.port, primero);
+  });
+
+  test("a port that cannot be recorded leaves no temp file and the server still starts", async () => {
+    const studio = estudioBasico();
+    write(studio, ".galeria/puerto/bloqueo", "x"); // a non-empty folder: the rename onto it fails
+    const srv = await iniciar(studio);
+    assert.ok(srv.port > 0);
+    assert.deepEqual(fs.readdirSync(path.join(studio, ".galeria")).filter((f) => f.startsWith("puerto.tmp-")), []);
   });
 
   test("a last port outside the range is ignored", async () => {

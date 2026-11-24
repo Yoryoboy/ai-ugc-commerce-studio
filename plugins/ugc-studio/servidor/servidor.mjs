@@ -21,7 +21,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const GALERIA_HTML = path.join(AQUI, "..", "galeria", "galeria.html");
 const BASE_PORT = 4317;
-const PORT_TRIES = 21; // 4317 … 4337
+export const PORT_TRIES = 21; // 4317 … 4337
 const MAX_BODY = 1024 * 1024;
 const MAX_ACCIONES = 500;
 const ROOTS = new Set(["actores", "clientes"]);
@@ -238,8 +238,14 @@ function derivar(e) {
 function escribirAtomico(file, contenido) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.tmp-${process.pid}`;
-  fs.writeFileSync(tmp, contenido);
-  fs.renameSync(tmp, file);
+  try {
+    fs.writeFileSync(tmp, contenido);
+    fs.renameSync(tmp, file);
+  } catch (err) {
+    // A full disk or a read-only folder must not leave the temp file behind.
+    try { fs.unlinkSync(tmp); } catch {}
+    throw err;
+  }
 }
 
 // The port recorded by the last server of this studio, or null.
@@ -258,6 +264,8 @@ const LAUNCH_NOMBRE = "galeria";
 function actualizarLaunch(raiz, puerto) {
   const file = path.join(raiz, ".claude", "launch.json");
   let actual = null;
+  // "0.0.1" is the launch.json format version the Claude desktop app reads, not the plugin
+  // version: never bump it with a release.
   let datos = { version: "0.0.1", configurations: [] };
   try { actual = fs.readFileSync(file, "utf8"); } catch (err) { if (err.code !== "ENOENT") throw err; }
   if (actual !== null) {

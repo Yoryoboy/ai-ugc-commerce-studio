@@ -13,10 +13,13 @@ TMP=$(mktemp -d)
 export CLAUDE_PLUGIN_ROOT="$REPO/plugins/ugc-studio"
 export UGC_GALERIA_PORT=0 # any free port: never touch a gallery the user may have open
 export UGC_GALERIA_IDLE_MIN=2 # a server that leaks from a failed test stops by itself
-STUDIOS=""
+# Every studio a test creates, one per line. A file, not a variable: new_studio runs inside $(…),
+# a subshell, so a variable it set would never reach cleanup.
+STUDIOS="$TMP/studios"
+: >"$STUDIOS"
 
 cleanup() {
-  for s in $STUDIOS; do CLAUDE_PROJECT_DIR=$s sh "$SCRIPT" stop >/dev/null 2>&1; done
+  while IFS= read -r s; do CLAUDE_PROJECT_DIR=$s sh "$SCRIPT" stop >/dev/null 2>&1; done <"$STUDIOS"
   rm -rf "$TMP"
 }
 trap cleanup EXIT
@@ -32,7 +35,7 @@ new_studio() {
   mkdir -p "$s/actores/ana-v1"
   printf '{"credits": {"available": 10}}\n' >"$s/studio.json"
   printf '{"id": "ana-v1", "name": "Ana"}\n' >"$s/actores/ana-v1/actor.json"
-  STUDIOS="$STUDIOS $s"
+  printf '%s\n' "$s" >>"$STUDIOS"
   printf '%s' "$s"
 }
 
