@@ -38,6 +38,7 @@ run() {
 }
 
 has() { case $2 in *"$3"*) pass "$1" ;; *) fail "$1 (no [$3] in [$2])" ;; esac; }
+lacks() { case $2 in *"$3"*) fail "$1 ([$3] found in [$2])" ;; *) pass "$1" ;; esac; }
 
 # Value of a field of the server state file of a studio.
 state() { sed -n "s/^ *\"$2\": *\"\{0,1\}\([^\",]*\)\"\{0,1\},\{0,1\} *\$/\1/p" "$1/.galeria/servidor.json" | head -n 1; }
@@ -78,9 +79,8 @@ check "summary: exit 0" "$CODE" "0"
 case $OUT in *"Actors: 1. Products: 1. Videos: 1 (storyboard 0, draft 1"*) pass "summary: counts" ;; *) fail "summary: counts ($OUT)" ;; esac
 cmp -s "$CLAUDE_PLUGIN_ROOT/galeria/galeria.html" "$S/galeria.html" && pass "gallery copied" || fail "gallery copied"
 case $OUT in *"Gallery: http://127.0.0.1:"[0-9]*"/ "*) pass "summary: gallery address" ;; *) fail "summary: gallery address ($OUT)" ;; esac
-has "summary: says to ask for the gallery" "$OUT" "abrí la galería"
-has "summary: the address can be opened directly" "$OUT" "the address can be opened directly"
-has "summary: points to galeria.sh open" "$OUT" 'galeria.sh" open'
+has "summary: points to the one rule for opening the gallery" "$OUT" '"Open the gallery" in workspace.md'
+lacks "summary: does not repeat the opening steps" "$OUT" "galeria.sh"
 case "$OUT$ERR" in *token* | *"?t="* | *"never print"*) fail "summary: no mention of an access token or link" ;; *) pass "summary: no mention of an access token or link" ;; esac
 check "the server has no token" "$(grep -c token "$S/.galeria/servidor.json")" "0"
 [ -e "$S/.galeria/datos.js" ] && fail "no datos.js is built" || pass "no datos.js is built"

@@ -68,8 +68,15 @@ full_studio() {
   mkdir -p "$s/clientes/acme/MLA2/fotos" "$s/clientes/beta/MLB1"
   printf '{"title": "Sommier"}\n' >"$s/clientes/acme/MLA2/producto.json"
   printf '{"title": "Otro"}\n' >"$s/clientes/beta/MLB1/producto.json"
+  mkdir -p "$s/clientes/acme/marca/referencias" "$s/clientes/gamma/marca"
+  printf '{"name": "Acme", "logo": "logo.svg"}\n' >"$s/clientes/acme/marca/marca.json"
+  printf '<svg/>' >"$s/clientes/acme/marca/logo.svg"
+  printf 'manual' >"$s/clientes/acme/marca/referencias/manual.pdf"
+  printf '{"name": "Gamma", "logo": null}\n' >"$s/clientes/gamma/marca/marca.json"
   printf '%s' "$s"
 }
+
+BRAND=clientes/acme/marca
 
 VIDEO=clientes/acme/MLA1/videos/2026-01-01-patas-idea
 
@@ -95,6 +102,8 @@ has "plan: light by default" "$OUT" "Mode: light"
 has "plan: actor of the video" "$OUT" "Actors: martin-v1"
 has "plan: product of the video" "$OUT" "Products: clientes/acme/MLA1"
 has "plan: the video" "$OUT" "Videos: $VIDEO"
+has "plan: brand kit of the video's client" "$OUT" "Brands: $BRAND"
+has "plan: names the brand references that go in the package" "$OUT" "Brand references (the client's originals, may be private): $BRAND/referencias/manual.pdf"
 has "plan: drafts left out" "$OUT" "Left out: 2 drafts"
 has "plan: both sizes" "$OUT" "Size complete:"
 [ -e "$A/exportaciones" ] && fail "plan: writes nothing" || pass "plan: writes nothing"
@@ -114,7 +123,12 @@ has "light export: final video" "$E" "$VIDEO/final.mp4"
 lacks "light export: no drafts" "$E" "borrador-"
 lacks "light export: no other product" "$E" "MLA2"
 lacks "light export: no unrelated actor" "$E" "luna-v1"
+has "light export: brand kit of the client" "$E" "$BRAND/marca.json"
+has "light export: brand logo" "$E" "$BRAND/logo.svg"
+has "light export: brand references" "$E" "$BRAND/referencias/manual.pdf"
+lacks "light export: no other client's brand" "$E" "gamma"
 M=$(unzip -p "$ZIP" manifest.json)
+has "manifest: brands" "$M" "\"brands\": [\"$BRAND\"]"
 has "manifest: format" "$M" '"format": "ugc-studio-package"'
 has "manifest: mode" "$M" '"mode": "light"'
 has "manifest: omitted drafts" "$M" "$VIDEO/borrador-v2.mp4"
@@ -143,11 +157,29 @@ has "client export: its videos" "$E" "$VIDEO/video.json"
 has "client export: actors its videos use" "$E" "actores/martin-v1/actor.json"
 lacks "client export: no other client" "$E" "clientes/beta"
 lacks "client export: no unused actor" "$E" "luna-v1"
+has "client export: its brand kit" "$E" "$BRAND/referencias/manual.pdf"
+
+run "$A" "$EXPORT" --nombre solo-marca clientes/gamma
+check "client with only a brand kit: exit 0" "$CODE" "0"
+E=$(entries "$A/exportaciones/$TODAY-solo-marca.zip")
+has "client with only a brand kit: the kit" "$E" "clientes/gamma/marca/marca.json"
+run "$A" "$EXPORT" --plan clientes/beta
+has "client without a brand kit: none listed" "$OUT" "Brands: none"
+lacks "client without a brand kit: no references line" "$OUT" "Brand references"
+
+run "$A" "$EXPORT" --nombre kit "$BRAND"
+check "brand kit by its folder: exit 0" "$CODE" "0"
+E=$(entries "$A/exportaciones/$TODAY-kit.zip")
+has "brand kit by its folder: the kit" "$E" "$BRAND/marca.json"
+lacks "brand kit by its folder: no products" "$E" "producto.json"
+run "$A" "$EXPORT" --plan clientes/beta/marca
+check "brand kit folder that does not exist: exit 1" "$CODE" "1"
 
 run "$A" "$EXPORT" --nombre studio todo
 E=$(entries "$A/exportaciones/$TODAY-studio.zip")
 has "studio export: every actor" "$E" "actores/luna-v1/actor.json"
 has "studio export: every client" "$E" "clientes/beta/MLB1/producto.json"
+has "studio export: every brand kit" "$E" "clientes/gamma/marca/marca.json"
 lacks "studio export: not the studio settings" "$E" "studio.json"
 lacks "studio export: not earlier packages" "$E" "exportaciones/"
 
@@ -170,6 +202,7 @@ check "preview: exit 0" "$CODE" "0"
 has "preview: new actor" "$OUT" "new       actor    actores/martin-v1"
 has "preview: new product" "$OUT" "new       product  clientes/acme/MLA1"
 has "preview: new video" "$OUT" "new       video    $VIDEO"
+has "preview: new brand kit" "$OUT" "new       brand    $BRAND"
 has "preview: package mode" "$OUT" "Mode: light"
 check "preview: writes nothing" "$(tree "$B")" "$before"
 
@@ -179,6 +212,9 @@ cmp -s "$A/$VIDEO/final.mp4" "$B/$VIDEO/final.mp4" && pass "apply: video copied"
 cmp -s "$A/actores/martin-v1/actor.json" "$B/actores/martin-v1/actor.json" && pass "apply: actor copied" || fail "apply: actor copied"
 cmp -s "$A/clientes/acme/MLA1/fotos/foto-1.jpg" "$B/clientes/acme/MLA1/fotos/foto-1.jpg" && pass "apply: photo copied" || fail "apply: photo copied"
 [ -e "$B/manifest.json" ] && fail "apply: manifest not copied" || pass "apply: manifest not copied"
+cmp -s "$A/$BRAND/marca.json" "$B/$BRAND/marca.json" && pass "apply: brand kit copied" || fail "apply: brand kit copied"
+cmp -s "$A/$BRAND/referencias/manual.pdf" "$B/$BRAND/referencias/manual.pdf" && pass "apply: brand references copied" || fail "apply: brand references copied"
+has "apply: brand kit reported" "$OUT" "$BRAND"
 has "apply: drafts to download from Higgsfield" "$OUT" "Drafts left out: $VIDEO/borrador-v1.mp4"
 CLAUDE_PROJECT_DIR=$B sh "$CLAUDE_PLUGIN_ROOT/scripts/sincronizar.sh" >/dev/null 2>&1
 check "apply: gallery sync accepts the result" "$?" "0"
@@ -237,6 +273,53 @@ run "$D" "$IMPORT" --aplicar --omitir actores/martin-v1 "$ZIP"
 check "omit: exit 0" "$CODE" "0"
 check "omit: local actor kept" "$(cat "$D/actores/martin-v1/actor.json")" '{"id": "martin-v1", "name": "Mío"}'
 has "omit: video still imported" "$(cat "$D/$VIDEO/video.json")" '"actorId": "martin-v1"'
+
+K=$(empty_studio k)
+mkdir -p "$K/$BRAND"
+printf '{"name": "Acme mía"}\n' >"$K/$BRAND/marca.json"
+before=$(tree "$K")
+run "$K" "$IMPORT" "$ZIP"
+has "brand conflict: reported" "$OUT" "conflict  brand    $BRAND"
+has "brand conflict: proposes keeping the studio's kit" "$OUT" "Proposed: --omitir $BRAND"
+run "$K" "$IMPORT" --aplicar --renombrar "$BRAND=otra" "$ZIP"
+check "rename a brand kit: exit 1" "$CODE" "1"
+check "rename a brand kit: writes nothing" "$(tree "$K")" "$before"
+run "$K" "$IMPORT" --aplicar --omitir "$BRAND" "$ZIP"
+check "brand omit: exit 0" "$CODE" "0"
+check "brand omit: local kit kept" "$(cat "$K/$BRAND/marca.json")" '{"name": "Acme mía"}'
+[ -e "$K/$BRAND/logo.svg" ] && fail "brand omit: no package file mixed into the local kit" || pass "brand omit: no package file mixed into the local kit"
+[ -f "$K/$VIDEO/video.json" ] && pass "brand omit: video still imported" || fail "brand omit: video still imported"
+
+# A marca/ folder with files but no marca.json: a same-named file with other content is a
+# conflict and is never replaced; an identical one is simply kept.
+P=$(empty_studio p)
+mkdir -p "$P/$BRAND"
+printf '<svg>mio</svg>' >"$P/$BRAND/logo.svg"
+before=$(tree "$P")
+run "$P" "$IMPORT" "$ZIP"
+has "partial brand folder, other logo: conflict" "$OUT" "conflict  brand    $BRAND"
+run "$P" "$IMPORT" --aplicar "$ZIP"
+check "partial brand folder, other logo: undecided refuses" "$CODE" "1"
+check "partial brand folder, other logo: writes nothing" "$(tree "$P")" "$before"
+run "$P" "$IMPORT" --aplicar --omitir "$BRAND" "$ZIP"
+check "partial brand folder, other logo: omit works" "$CODE" "0"
+check "partial brand folder, other logo: local logo kept" "$(cat "$P/$BRAND/logo.svg")" "<svg>mio</svg>"
+[ -e "$P/$BRAND/marca.json" ] && fail "partial brand folder, other logo: no marca.json added" || pass "partial brand folder, other logo: no marca.json added"
+
+Q=$(empty_studio q)
+mkdir -p "$Q/$BRAND"
+cp "$A/$BRAND/logo.svg" "$Q/$BRAND/logo.svg"
+run "$Q" "$IMPORT" "$ZIP"
+has "partial brand folder, same logo: new" "$OUT" "new       brand    $BRAND"
+run "$Q" "$IMPORT" --aplicar "$ZIP"
+check "partial brand folder, same logo: exit 0" "$CODE" "0"
+cmp -s "$A/$BRAND/marca.json" "$Q/$BRAND/marca.json" && pass "partial brand folder, same logo: kit completed" || fail "partial brand folder, same logo: kit completed"
+cmp -s "$A/$BRAND/logo.svg" "$Q/$BRAND/logo.svg" && pass "partial brand folder, same logo: logo intact" || fail "partial brand folder, same logo: logo intact"
+
+G=$(empty_studio g)
+run "$G" "$IMPORT" --aplicar "$A/exportaciones/$TODAY-solo-marca.zip"
+check "package with only a brand kit: exit 0" "$CODE" "0"
+[ -f "$G/clientes/gamma/marca/marca.json" ] && pass "package with only a brand kit: imported" || fail "package with only a brand kit: imported"
 
 V=$(empty_studio v)
 mkdir -p "$V/$VIDEO"

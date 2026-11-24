@@ -185,8 +185,8 @@ status_count() {
 printf 'UGC Studio workspace: %s\n' "$ROOT"
 printf 'Contract: %s/references/workspace.md (save every file where it says).\n' "$PLUGIN"
 if [ -n "$GALERIA_URL" ]; then
-  printf 'Gallery: %s (local server; the address can be opened directly. To open it for the user run `sh "%s/scripts/galeria.sh" open`, or ask Claude "abrí la galería").\n' \
-    "$GALERIA_URL" "$PLUGIN"
+  printf 'Gallery: %s (local server; to open it for the user follow "Open the gallery" in workspace.md).\n' \
+    "$GALERIA_URL"
 else
   printf 'Gallery: the server did not start: %s\n' "$(printf '%s' "$GALERIA_NOTE" | tr '\n' ' ')"
 fi
