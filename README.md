@@ -248,6 +248,8 @@ skills/                   los flujos (setup, configurar-memoria, crear-actor, cr
                           crear-creativos, transferir); guardan según el contrato
 references/dependencias.md qué necesita el estudio y cómo revisarlo e instalarlo si falta
 references/engram.md      cómo instalar la memoria persistente (Engram); lo sigue el setup
+references/memoria.md     cuándo las skills buscan y guardan en la memoria (al empezar, en cada
+                          decisión y al cerrar) y con qué topic_key
 references/plantillas/    la plantilla HTML de los creativos con texto puesto encima
 hooks/hooks.json          al abrir la sesión y después de cada archivo que escribe Claude,
                           corre scripts/sincronizar.sh (enciende la galería o usa la que ya

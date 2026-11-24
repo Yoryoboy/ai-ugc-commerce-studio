@@ -9,9 +9,13 @@ The user is usually not a programmer. Talk in Spanish (Rioplatense, warm, short)
 should never have to invent a description: **you recommend, they pick.**
 
 Shared files are in `${CLAUDE_PLUGIN_ROOT}/references/`: `prompts/actor-portrait.md`,
-`prompts/actor-angles.md`, `prompts/actor-character-sheet.md` and `workspace.md`, the contract
+`prompts/actor-angles.md`, `prompts/actor-character-sheet.md`, `memoria.md` and `workspace.md`, the contract
 for where every file goes (the gallery only shows what follows it). Read `studio.json` first; if
 it is missing, run `setup`.
+
+**Memory.** Follow `memoria.md` at three moments: search it once the reason or niche is known, save
+after every decision the user makes, and save the actor at the close. Skip it silently if
+Engram is not available.
 
 ## 1. Start from the reason
 
@@ -80,5 +84,6 @@ and outfit match the portrait in every view.
 
 ## 6. Close
 
-Tell the user the actor is ready and is in the gallery (Actores; to open it follow `workspace.md`, "Open the gallery"), the credits used, and suggest
+Save the actor to memory (`memoria.md`, `ugc/actores/<actorId>`: look, niches, what the user
+rejected among the candidates and why). Tell the user the actor is ready and is in the gallery (Actores; to open it follow `workspace.md`, "Open the gallery"), the credits used, and suggest
 the next step ("¿Hacemos un video con <nombre>?").
