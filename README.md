@@ -146,6 +146,37 @@ UGC Studio/
 Todo queda en tu computadora: borradores, finales en 1080p e imágenes. La galería solo muestra lo
 que está en esta carpeta, así que no muevas ni renombres archivos a mano.
 
+## Guardia de gasto y medidor de créditos
+
+Dentro de un estudio (una carpeta con `studio.json`), el plugin vigila cada generación de
+Higgsfield. Antes de gastar créditos, frena la llamada, consulta el precio exacto (`get_cost`, que
+no cuesta nada) y te muestra el modelo, la resolución, los segundos y cuánto cuesta, con tres
+botones:
+
+- **Generar**: corre la generación tal cual.
+- **Pasar a borrador**: la genera en 480p (`draft: true`), mucho más barata, y se puede pasar a
+  1080p dentro de los 7 días sin regenerar. Aparece solo en videos directos (no en borradores
+  ni en imágenes) y la pregunta lo sugiere: si la idea es nueva, conviene un borrador.
+- **Cancelar**: no corre nada y no gasta nada. Claude te pregunta qué cambiar.
+
+Así la regla "nunca gastar sin decir cuánto cuesta" se cumple siempre, no solo cuando Claude se
+acuerda. Si no hay precio de Higgsfield, muestra una estimación con `~`. Los borradores que
+finalizás y las imágenes solo ofrecen Generar y Cancelar.
+
+Arriba del prompt queda una franja con el **medidor de créditos**: lo gastado en la sesión, el
+saldo que queda (se actualiza con Higgsfield después de cada generación) y el gasto **por actor y
+por producto**. El actor y el producto se deducen del último archivo que se tocó en el estudio en
+los últimos 30 minutos; si no se puede saber, el gasto cuenta solo en el total. Las generaciones
+que Higgsfield no llegó a enviar (por ejemplo, cuando pide elegir `use_unlim`) no se cuentan, y en
+una tanda se cuenta solo la parte enviada. El medidor empieza de cero en cada sesión.
+
+Requisitos y límites:
+
+- Necesita Claude Code **2.1.287 o más** (los mods no cargan en versiones anteriores).
+- En `claude -p` no hay nadie a quien preguntar, así que las generaciones se rechazan.
+- En Claude Desktop y en VS Code la franja puede no dibujarse.
+- Fuera de un estudio no hace nada.
+
 ## Pasar trabajo entre compus
 
 Claude arma un paquete `.zip` con lo que pidas (un actor, un video, un producto, un cliente o todo
@@ -219,6 +250,9 @@ references/engram.md      cómo instalar la memoria persistente (Engram); lo sig
 references/plantillas/    la plantilla HTML de los creativos con texto puesto encima
 hooks/hooks.json          al abrir la sesión y después de cada archivo que escribe Claude,
                           corre scripts/sincronizar.sh
+hooks/ugc-studio.mjs      el mod: la guardia de gasto (frena cada generación de Higgsfield y
+                          pregunta Generar / Pasar a borrador / Cancelar) y el medidor de créditos
+                          (la franja de arriba del prompt)
 scripts/sincronizar.sh    copia la página de la galería al estudio, valida los .json que cambiaron,
                           enciende el servidor si hace falta; avisa a Claude si un .json está roto
 scripts/galeria.sh        enciende, apaga y abre el servidor local de la galería (start, stop,
@@ -249,6 +283,8 @@ plugins/ugc-studio/               el plugin: skills, referencias, hooks, scripts
 Tests (necesitan Node 18+ y curl; los de transferir, también unzip y zip o python3; los de componer,
 Chrome o Chromium): `node --test tests/*.test.mjs` (servidor), `sh tests/sincronizar.test.sh`,
 `sh tests/galeria.test.sh`, `sh tests/transferir.test.sh` y `sh tests/componer.test.sh`.
+El mod (guardia de gasto y medidor) se prueba con Claude Code 2.1.287 o más (verificado en 2.1.330):
+`cd plugins/ugc-studio && claude plugin test` (`plugins/ugc-studio/tests/*.test.ts`).
 `sh tests/bench-galeria.sh` mide la galería con 2.000 creativos. Para
 probarlo contra un estudio real: `CLAUDE_PROJECT_DIR=<estudio> sh
 plugins/ugc-studio/scripts/sincronizar.sh --resumen`.
