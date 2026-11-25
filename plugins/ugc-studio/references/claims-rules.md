@@ -21,6 +21,13 @@ From the product sheet, write two lists in the product folder (`ficha.md`):
 - Things the listing says are not included (for example "tuercas o placas no incluidas").
 - Comparisons with named competitors.
 
+## Buyer quotes
+
+Buyer questions and reviews are evidence of language, not claims. A buyer saying "me curó" never
+makes it allowed. Use them to choose words, objections and hooks. A real review may be quoted only
+verbatim, attributed as a buyer opinion ("opinión de un comprador"), and only if it passes the
+forbidden list above; otherwise leave it out.
+
 ## When in doubt
 
 Use the softer version the listing supports ("se adapta a la mayoría de los sommiers" instead of
