@@ -137,6 +137,9 @@ with what failed and what fixed it (`memoria.md`).
 
 ## 8. Close
 
+Set `adName` in `video.json` if it is missing (`workspace.md`) and give it to the user: it is the
+name to use for the ad in Meta, so `leer-resultados` can find its results later.
+
 Save the video's summary to memory (`memoria.md`: idea, actor, versions, credits, what worked).
 Summarize: video, status, total credits for this video, and where to see it (the gallery, and
 Higgsfield for the original files).

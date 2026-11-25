@@ -146,6 +146,7 @@ relative to the product folder.
   "status": "draft",
   "angle": "Problema → solución",
   "hook": "¿Ustedes también tienen la cama pegada al piso?",
+  "adName": "MLA1234567890_dolor_martin_video",
   "script": "…",
   "durationSec": 15,
   "scenes": 4,
@@ -176,6 +177,10 @@ relative to the product folder.
   `thumb-vN.jpg`.
 - When finalized: download `final.mp4`, set `finalUrl`, add the cost to `credits` and set
   `status` to `final`.
+
+- `adName` (optional; older videos may lack it) is the name to give the ad in Meta, like a
+  creative's: `<productId>_<angle>_<actorId without -vN>_video`, lowercase except the `productId`,
+  `_` between parts, no spaces. `leer-resultados` matches Meta results to the video by it.
 
 The client and product come from the folder path, so `video.json` does not repeat them.
 

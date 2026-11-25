@@ -37,8 +37,9 @@ client or product and keep it to compare.
 Read `clientes/<profileId>/*/creativos/*/creativo.json` and
 `clientes/<profileId>/*/videos/*/video.json` (`workspace.md`; archived ones too, they may still
 run). Per piece keep: id, product, type, status, `adName`, angle, awareness, visual, actor and
-the concept's `why` or hypothesis. A video has no `adName`: match it by the name the user gave
-it in Meta (ask once, or use its `id` or `title` when that is what they used). If the client has
+the concept's `why` or hypothesis. Videos match by their `adName` too; an older video without one
+matches by the name the user gave it in Meta (ask once, or use its `id` or `title` when that is
+what they used). If the client has
 nothing in the studio, say so: you can still read the ads, but you cannot tie them to a concept.
 
 ## 3. The numbers
