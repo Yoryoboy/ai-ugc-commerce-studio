@@ -25,6 +25,7 @@ Paths are relative to `skills/` in the upstream repository.
 | `marketing/psicologia.md` | `marketing-psychology/` (short extract) | `crear-creativos` |
 | `producto.md`, `workspace.md` (`ficha.md` sections, `marca.json` voice and avoid fields) | `product-marketing/`, `customer-research/` | all product steps |
 | `skills/leer-resultados/` | `ad-creative/` (iteration loop), `ab-testing/` | `leer-resultados` |
+| `skills/leer-resultados/` section 5 (decision rules) | `ads/references/meta-decision-system.md` | `leer-resultados` |
 
 Each writer adds or adjusts the row of the file it creates. Files not listed here are studio
 originals.
@@ -33,7 +34,6 @@ originals.
 
 - `ai-video-prompting.md` and `ai-image-prompting.md`: written for other models and they
   contradict the studio's tested Seedance and GPT Image lessons. The studio keeps its own prompts.
-- `meta-decision-system.md`: B2B and TCPL logic that does not fit e-commerce.
 - Competitor callouts and price or urgency copy: forbidden by `claims-rules.md`.
 - The English vocabulary blacklist in `ai-tells.md`: only the structural patterns are adapted.
 - Review-screenshot visuals: only from real, permitted reviews.
@@ -42,6 +42,18 @@ originals.
 - `offers`: not adopted. `marketing-psychology`: only a short extract.
 - Founder, authority, VSL, street-interview and screen-recording formats: they need real people,
   credentials or other tools.
+
+## Partially adopted
+
+- `meta-decision-system.md` (in `leer-resultados`, read-only advice). **Taken:** the idea of one
+  anchor number with every threshold derived from it (here the client's target CPA or ROAS,
+  saved in memory, instead of TCPL), the data gate and kill/keep/scale multiples, fatigue signals
+  (frequency, CTR and CPM trends), never editing a performing ad, +20 % every ~5 days and never
+  +30 % in one move, the weekly cadence, separate testing and scaling campaigns, and ~50
+  conversions a week before Advantage+. **Dropped:** TCPL and lead quality (CRM), lead forms,
+  B2B benchmarks and the Q4 cut (it is the e-commerce peak), because they are lead-gen logic;
+  also partnership ads, destination tests and the creative-production math, which need data or
+  decisions the studio does not have. The studio only advises: it never pauses, scales or edits.
 
 ## How to update
 

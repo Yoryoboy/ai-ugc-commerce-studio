@@ -18,6 +18,7 @@ One stable `topic_key` per subject, so a new save updates the subject instead of
 | What won or lost in the ads of a product (read with `leer-resultados`) | `ugc/<profileId>/<productId>/resultados` |
 | What won or lost across the products of a client (angle, format, hook patterns) | `ugc/<profileId>/aprendizajes` |
 | A client's brand kit and taste | `ugc/<profileId>/marca` |
+| A client's target CPA or ROAS (or break-even from price and margin) | `ugc/<profileId>/objetivos` |
 | An actor (how it looks, where it worked or failed) | `ugc/actores/<actorId>` |
 
 ## 1. At the start: search
@@ -55,6 +56,11 @@ compare with the last reading and not repeat it). Save with the product's `.../r
 and with `ugc/<profileId>/aprendizajes` when the lesson holds beyond one product (an angle or a
 format that keeps winning or losing). Update the same key each time and keep the older readings
 in the content, with their dates.
+
+The client's target CPA or ROAS lives in its own topic, `ugc/<profileId>/objetivos`: `leer-resultados`
+searches it before asking, asks once when it is missing, and saves it as soon as the user gives
+it (content: the target, whether it is a goal or a break-even from price and margin, the date).
+Update the same key when the user changes it, and keep the old value with its date.
 
 Each saved reading carries what a future batch needs to trust it or ignore it:
 

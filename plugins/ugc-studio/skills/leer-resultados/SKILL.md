@@ -1,6 +1,6 @@
 ---
 name: leer-resultados
-description: Read how the studio's Meta ads performed, read-only through BI-MCP — match each ad's results to the creative or video that made it (by adName), judge winners and losers with a minimum-data floor, explain it in plain Spanish with a short table, recommend the next batch (iterate, retire, test something new) and save the learnings to memory. Never edits, pauses or uploads anything. Use when the user asks for resultados, métricas, "cómo anduvo", "qué funcionó", ganadores, perdedores, "qué apago", qué escalar, ROAS, CPA, CTR or how the anuncios or creativos are doing.
+description: Read how the studio's Meta ads performed, read-only through BI-MCP — match each ad's results to the creative or video that made it (by adName), judge winners and losers against the client's target CPA or ROAS with a minimum-data floor, explain it in plain Spanish with a short table, recommend the next batch (iterate, retire, test something new) and save the learnings to memory. Never edits, pauses or uploads anything. Use when the user asks for resultados, métricas, "cómo anduvo", "qué funcionó", ganadores, perdedores, "qué apago", qué escalar, ROAS, CPA, CTR or how the anuncios or creativos are doing.
 ---
 
 # Read the results
@@ -78,9 +78,9 @@ Rules of thumb, not statistics: Meta does not split spend evenly between ads, so
 a signal, not proof.
 
 - **Floor:** below about 1,000 impressions, no verdict, only "todavía no hay datos suficientes".
-  For ROAS or CPA also ask for spend of at least about 2 times the product's price (or the
-  user's target CPA) and a few purchases; with less, judge only by CTR and CPC, and say that
-  sales are not readable yet. Retiring an ad too early is the common mistake.
+  For ROAS or CPA also ask for spend of at least about 3 times the target CPA (section 5; with
+  no target, about 2 times the product's price) and a few purchases; with less, judge only by
+  CTR and CPC, and say that sales are not readable yet. Retiring an ad too early is the common mistake.
 - **Which metric:** the one the concept's hypothesis named (`creativo.json` `concept.why`,
   memory). If it named none: ROAS or CPA when there are purchases, CTR otherwise. If
   `purchase_value` is 0 for every ad, tell the user the sales may not be tracked and judge by
@@ -96,7 +96,59 @@ a signal, not proof.
 - Compare like with like: very different dates, budgets or audiences make the table unfair; say
   it when that is the case.
 
-## 5. Explain it
+## 5. Decision rules (the target is the anchor)
+
+Adapted from a Meta operating system built for B2B leads; here the anchor is the client's
+**target CPA** (the most they can pay for a sale, `T`) or **target ROAS** (`R`). Search memory
+first (`ugc/<profileId>/objetivos`, `memoria.md`). If it is not there, ask once, in plain words
+("¿Cuánto podés pagar como máximo por una venta, o qué ROAS buscás?"). If they do not know, ask
+for price and margin: break-even CPA = price × margin, break-even ROAS = 1 ÷ margin. Say it is
+the break-even (it earns nothing), not a goal, and use it as the line. With neither, verdicts
+stay relative (the "20 %" comparison in section 4) and you say so. Save the target once
+(`memoria.md`).
+
+Verdict on the same dates for every ad (about 14 days), in order, stopping at the first that
+applies. With a ROAS target read "above 1.5 × T" as "ROAS below R ÷ 1.5":
+
+1. Spend under 3 × T or under about 1,000 impressions → wait: "todavía no hay datos suficientes".
+2. Spend of 3 × T or more and no purchases → retire the concept; do not iterate a dead one.
+3. CPA at or below T → winner (provisional under 5 purchases). It is a scale candidate only
+   with 14+ days, 5+ purchases and a purchase in the last 7 days (a second call).
+4. CPA between T and 1.5 × T → keep watching: normal variance.
+5. CPA above 1.5 × T → retire: structural, not noise.
+
+**Fatigue.** Only these metrics exist: `spend`, `impressions`, `reach`, `ctr_percent`, `cpm`,
+`roas`, `purchases`. Frequency = `impressions ÷ reach` per row (never add `reach` across rows: it
+overlaps). Read the trend by calling twice, two equal periods, and comparing. Cold audience:
+frequency 2.5 to 4 is a warning, above 4 critical; retargeting tolerates more (4 to 6, above 6
+critical); ask which one it is. Early signals: CTR down 20 % or more, CPM up 30 % or more (it moves
+first), CPA up with the same audience → start iterating now (new executions take about 2 weeks).
+CTR down 30 % or more, or critical frequency → the concept is tired: retire it and test another,
+not a new version of the same. Not available: daily series (no "CTR from peak"), ad rankings,
+campaign or ad set, budgets, learning status, audience type. Ask the user or say it is unknown.
+
+**Moves** (advice only: the studio never pauses, scales or edits; the user decides and does it in
+Ads Manager or through BI-MCP):
+
+- **Never edit a performing ad:** editing it resets learning. Duplicate it or launch the new
+  version beside it. Pausing does not reset. Do not pause without a replacement staged.
+- **Scale** only with CPA at or below T for 2+ weeks, frequency under 3 and replacements ready:
+  +20 % every ~5 days, never +30 % or more in one move. If CPA goes above 1.5 × T after a step,
+  cut 20 to 30 %, stabilize two weeks, then +10 % a week. The budget is not in the data: ask.
+- **Testing and scaling apart:** proven ads in one campaign (~80 % of the budget), tests in
+  another (~20 %) over the same audience, so new ads are not starved. Judge each ad against its
+  role; ask where it runs (not in the data). New concepts graduate after 14+ days at CPA at or
+  below T.
+- **Weekly review**, the same day, on the last 14 days: verdicts and fatigue first, then new
+  tests into the free slots, then scale or rollback. Do not judge a launch before ~5 days.
+- **~50 purchases a week** on the optimized event before consolidating into Advantage+ or
+  broad (purchases ÷ days × 7, per campaign). Below that, keep campaigns manual and separate.
+- **Q4 is the e-commerce peak** (Black Friday, Cyber Monday, Navidad): CPMs rise, so do not
+  cut spend by reflex; compare against the same weeks, not calm months.
+
+A verdict is a number against the target, not a promise. Say "según estas fechas".
+
+## 6. Explain it
 
 Short, plain, no jargon dump. A table of the pieces past the floor, best first: piece (title and
 `adName`), type, angle, spend, impressions, CTR, purchases, ROAS or CPA, verdict (ganador /
@@ -105,7 +157,7 @@ may have (angle, format, hook), what lost, what has no data yet, and what did no
 amounts in the account's currency. Never call a result "comprobado": it is what these dates
 showed.
 
-## 6. Next batch
+## 7. Next batch
 
 Recommend, in this order, and let the user choose:
 
@@ -122,10 +174,11 @@ Recommend, in this order, and let the user choose:
 Offer to start the batch with `crear-creativos` or `crear-video` and pass the reading along; do
 not start it yourself.
 
-## 7. Save
+## 8. Save
 
 When the user has seen the reading, save it to memory (`memoria.md`, section "When results are
-read": what won and lost, the metric and numbers, dates, sample size, the user's decision). Do
+read": what won and lost, the metric and numbers, dates, sample size, the target used, the
+user's decision). Do
 not save readings below the floor as verdicts. There is no results file in the studio
 (`workspace.md` defines none): the reading lives in the chat and in memory. Tell the user in
 one line.
