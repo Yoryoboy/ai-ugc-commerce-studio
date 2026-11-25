@@ -98,6 +98,7 @@ palabras:
 | Hacer un video | "Quiero un video para las patas de sommier" |
 | Hacer creativos para Meta Ads | "Haceme creativos para Meta de las patas de sommier" |
 | Ver todo lo creado | "Abrí la galería" (Claude la abre en tu navegador) |
+| Ver cómo anduvieron los anuncios | "¿Cómo anduvieron los creativos de Acme este mes?" |
 | Activar o revisar la memoria | "Activá la memoria" |
 | Pasar trabajo a otra compu | "Exportá el video de las patas", "Exportá el cliente Acme", "Exportá todo el studio" |
 | Traer trabajo de otra compu | Arrastrá el `.zip` al chat, o dejalo en `importaciones/` y escribí "Importá lo que dejé" |
@@ -107,7 +108,7 @@ cuesta.**
 
 Para cada video, Claude:
 
-1. Propone 3 ideas con guion.
+1. Propone 3 ideas con guion, cada una con su formato UGC y su forma de abrir (el hook).
 2. Dibuja una imagen por escena (el storyboard) para que la apruebes.
 3. Genera el video a partir de esas imágenes.
 
@@ -128,6 +129,17 @@ Para los creativos de Meta Ads, Claude:
 
 Cada imagen cuesta unos 2,75 créditos: una tanda de 8 conceptos ronda los 55 créditos. Cambiar
 solo el texto de una plantilla no cuesta nada.
+
+Al cargar un producto, Claude lee también las preguntas que hicieron los compradores en Mercado
+Libre y guarda en la ficha cómo hablan, qué objeciones tienen y qué los empuja a comprar. Las
+ideas de video y los conceptos de creativos salen de ahí, y cada concepto dice qué espera lograr
+(por ejemplo, "más CTR que el #1"). Los guiones y textos pasan un filtro para que no suenen a IA
+ni prometan nada que no esté permitido.
+
+Cuando los anuncios ya corrieron, pedí los resultados: Claude lee las métricas de Meta con
+BI-MCP (solo lectura, nunca pausa ni sube nada), las cruza con cada creativo o video por su
+nombre en Meta, te dice cuáles ganan y cuáles no (sin opinar si todavía hay pocos datos) y
+guarda lo aprendido para la próxima tanda.
 
 ## Dónde queda cada cosa
 
@@ -245,7 +257,11 @@ normalmente no programa: hablale en castellano, simple, y decile en una línea q
 ```txt
 references/workspace.md   el contrato: carpetas, nombres de archivo y campos de cada .json
 skills/                   los flujos (setup, configurar-memoria, crear-actor, crear-video,
-                          crear-creativos, transferir); guardan según el contrato
+                          crear-creativos, leer-resultados, transferir); guardan según el
+                          contrato
+references/marketing/     criterio de marketing adaptado de coreyhaines31/marketingskills (MIT):
+                          hooks, copy, formatos de Meta y psicología; su README dice de dónde
+                          sale cada archivo y qué se dejó afuera
 references/dependencias.md qué necesita el estudio y cómo revisarlo e instalarlo si falta
 references/engram.md      cómo instalar la memoria persistente (Engram); lo sigue el setup
 references/memoria.md     cuándo las skills buscan y guardan en la memoria (al empezar, en cada
