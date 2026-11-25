@@ -11,7 +11,18 @@ button or font counts as one creative. So variety is of **concept**, not of micr
 - Every pair of concepts differs in at least two of angle, persona and visual; no two share
   angle + visual.
 - Angles: dolor, deseo/aspiración, precio/oferta, prueba social, comparación, cómo se usa,
-  objeción, regalo/ocasión.
+  objeción, regalo/ocasión, curiosidad, identidad, contrarian.
+  - **curiosidad:** an open question or detail about a true product fact that the image or the
+    listing answers. Never a hook the page cannot pay off, never a "secreto" about health.
+  - **identidad:** speaks to a situation, activity or taste ("para quien arma su escritorio en
+    el living"), never to a personal attribute (body, health, money, age) of the reader.
+  - **contrarian:** challenges a belief of the category, with a fact from the allowed list; no
+    named competitor or brand, no absolute ("nunca", "el único"), and no pose of a hidden truth.
+  - All three go through `claims-rules.md` and the Policy list below like any angle; a hook
+    that needs a forbidden claim to work is dropped, not softened into a promise.
+- Formats, tiers, the hypothesis each concept carries and Andromeda notes:
+  `marketing/formatos-meta.md`. Why each angle moves a buyer, with the claims filter:
+  `marketing/psicologia.md`.
 - Awareness: no sabe del problema, conoce el problema, conoce soluciones, conoce el producto,
   listo para comprar.
 - Visuals: product alone on a clean background, person using it, detail/texture, customer-photo

@@ -9,7 +9,8 @@ The user is usually not a programmer. Talk in Spanish (Rioplatense, warm, short)
 recommend, they pick. Never spend credits without telling them the exact cost first.
 
 Shared files are in `${CLAUDE_PLUGIN_ROOT}/references/`: `workspace.md` (where every file goes),
-`producto.md`, `meta-ads.md`, `claims-rules.md`, `costs.md`, `memoria.md` and `prompts/creativo-imagen.md`.
+`producto.md`, `meta-ads.md`, `claims-rules.md`, `costs.md`, `memoria.md` and `prompts/creativo-imagen.md`,
+plus `marketing/formatos-meta.md`, `marketing/psicologia.md` and `marketing/copy.md`.
 Save every file exactly where `workspace.md` says: the gallery shows the work from the folders
 and updates by itself. Read `studio.json` first; if it is missing, run `setup`. We never upload
 to Meta: another MCP does that.
@@ -45,17 +46,22 @@ If there is no kit, build it from what the client already has defined, not from 
    `negro`, `icono`…). Read the PDFs and look at the images.
 4. **Extract the kit** (`workspace.md`, `marca.json`): map the brand palette to the four roles
    (`primary`, `accent`, `text`, `background`) and keep the rest in `palette`; fonts; `tone`;
-   `audience`; brand rules in `dos` and `donts`; the logo versions in `logos`; and every source
-   in `sources`. If the brand font is not on Google Fonts, use the closest Google Font in
+   `audience`; brand rules in `dos` and `donts`; `voice` (3 to 5 attributes, each with `is` and
+   `isNot`) and `avoidWords` (words and phrases the copy never uses), taken from the manual,
+   the client skill or the pasted text, and proposed from `tone` and `donts` only when no source
+   says it; the logo versions in `logos`; and every source in `sources`. If the brand font is not on Google Fonts, use the closest Google Font in
    `fonts` and write the real one in `fonts.brand`. When two sources disagree, ask.
 5. **Fill the gaps** only for what no reference says: propose it from the product photos and the
    store (Google Fonts names, `google: true`), and mark it as proposed when you show it.
-6. Show a short summary (colors with their hex, fonts, logo versions, tone, rules, and what was
+6. Show a short summary (colors with their hex, fonts, logo versions, tone, voice, words to
+   avoid, rules, and what was
    proposed vs. taken from a source). When the user confirms, write `marca.json` and save the
    kit and the client's taste to memory (`memoria.md`). Do not ask again next time.
 
-Use the kit in the rest of the batch: `tone`, `audience`, `dos` and `donts` guide the copy and the
-concepts, and the image prompts follow the colors and rules.
+Use the kit in the rest of the batch: `tone`, `audience`, `voice`, `dos` and `donts` guide the copy
+and the concepts, no copy uses a word of `avoidWords`, and the image prompts follow the colors and
+rules. A kit made before `voice` and `avoidWords` existed still works: offer to add them when the
+user next updates it, and do not block the batch.
 
 ## 3. Concepts → decision 1
 
@@ -66,9 +72,18 @@ Build the matrix following `meta-ads.md`: every pair of concepts differs in at l
 persona and visual, and no two share angle + visual. Meta groups near-identical creatives, so
 variety of concept matters, not color tweaks. Check the rule yourself before showing it.
 
+Read `marketing/formatos-meta.md` to choose each concept's format (scaler or support, and what
+the studio can make), and `marketing/psicologia.md` when choosing angles. Ground each concept in
+the buyer evidence of `ficha.md` (questions, quotes, objections, forces) or label it a bet; the
+review-quote format needs a real, permitted review, never an invented one.
+
 Show a table in chat. Per concept: #, angle, awareness, persona (actor or only product), visual,
-type (static, or carousel with N cards), text mode (template with its layout, or integrated), the
-copy (primary text ≤ 125, headline ≤ 40, description ≤ 30, CTA), `adName`, and why it differs.
+type (static, or carousel with N cards), text mode (template with its layout, or integrated),
+format and its role (scaler or support), the hypothesis (metric, comparison and expected
+direction, as in `formatos-meta.md`), the evidence it comes from (or "apuesta"), the copy
+(primary text ≤ 125, headline ≤ 40, description ≤ 30, CTA), `adName`, and why it differs.
+Every piece of copy passes the gate of `marketing/copy.md` (its three questions, the `[NEED: …]`
+mark instead of invented proof) and respects the kit's `voice` and `avoidWords`.
 Choose an actor with the `actores/*/actor.json` niches when a concept uses a person. Every product
 statement must be an allowed claim, and nothing may break the policy list in `meta-ads.md`.
 The user approves, removes or edits concepts; nothing is generated before that. Save what was
@@ -114,6 +129,9 @@ Look at every piece before the user does. Check:
 - Actor: same identity as the portrait; hands with five fingers, natural grip.
 - Text exact and readable; nothing in the safe zones (9:16: top 14 %, bottom 35 %).
 - Claims are in `ficha.md`'s allowed list; nothing in the Meta policy list.
+- Copy and image text have none of the AI-tell patterns of `marketing/copy.md` (contrast
+  reveals, negation lists, self-answered questions, stock phrases), vary their shapes across the
+  batch, use no word of `avoidWords` and no `[NEED: …]` left over.
 - Different from its siblings (not near-identical to another concept); carousel cards look like
   one family and each makes sense alone.
 
