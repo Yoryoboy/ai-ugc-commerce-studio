@@ -32,10 +32,14 @@ vague line. Write the gap instead:
 
 Rules:
 
-- Numbers, durations ("hace tres meses lo uso"), testimonials, awards and "miles de clientes"
-  exist only if the listing, the client or real data gave them. The synthetic actor must not
-  claim lived experience that nobody lived: keep first person to what is visible and what the
-  listing supports ("mirá cómo encaja"), not "me cambió la vida".
+- Hard data exists only if the listing, the client or real data gave it: statistics, sales or
+  customer counts ("miles de clientes"), awards, quoted reviews, and product specs (capacity,
+  duration, measurements).
+- The actor is an actor, like one hired for a UGC ad: it may tell its experience naturally in
+  first person ("hace meses que las uso", "me encanta cómo quedó", "ahora la cama no se mueve").
+  That is acted experience, not hard data. What it says *about the product* must still be an
+  allowed claim: no results, numbers or transformations the product cannot back ("bajé 5 kilos",
+  "me curó la espalda", "duran 10 años"), and nothing from the forbidden list.
 - A script with an open `[NEED]` is not final. Tell the user what is missing in one line and give
   the closest supportable version (the softer wording from `claims-rules.md`), or cut the line.
 - When a requested claim is declined, name it, say why, offer the supportable alternative and say
@@ -92,5 +96,6 @@ vocabulary and `marca.json` voice.
 3. Count fragments, triplets and stock phrases per paragraph.
 4. Read it aloud: does it sound like a press release or like someone showing a thing?
 5. Run the swap test on the first line and the last line.
-6. Any number, time span, testimonial or result you did not get from a source? Replace with `[NEED: …]`.
+6. Any statistic, customer count, award, quoted review, spec or product result you did not get
+   from a source? Replace with `[NEED: …]`. The actor's own acted experience is fine (section 2).
 7. Did you change a line only because it was different? Revert it unless you can say why it is better.
