@@ -9,7 +9,7 @@ The user is usually not a programmer. Talk in Spanish (Rioplatense, warm, short)
 recommend, they pick. Never spend credits without telling them the exact cost first.
 
 Shared files are in `${CLAUDE_PLUGIN_ROOT}/references/`: `claims-rules.md`, `costs.md`, `producto.md`,
-`prompts/ugc-video.md`, `memoria.md` and `workspace.md`, the contract for where every file goes. Save every
+`prompts/ugc-video.md`, `marketing/hooks.md`, `marketing/copy.md`, `memoria.md` and `workspace.md`, the contract for where every file goes. Save every
 file exactly where it says: the gallery shows the work from the folders and
 updates by itself, so the user can follow along there. Read `studio.json` first; if it is
 missing, run `setup`.
@@ -32,16 +32,22 @@ say so and offer to create one with the `crear-actor` skill.
 
 ## 3. Ideas → decision 1
 
-Propose **3 ideas** with the question tool (`AskUserQuestion`; numbered options in chat if it is
-not available), recommended first. Each idea has, in its description:
+Read `marketing/hooks.md` and `marketing/copy.md` before proposing. Propose **3 ideas** with the
+question tool (`AskUserQuestion`; numbered options in chat if it is not available), recommended
+first. Each idea has, in its description:
 
 - the angle (problem → solution, before/after, discovery, tutorial…),
-- the hook (first line),
+- the format (reaction + demo, talking head, demo, unboxing…) and the opening move
+  (curiosity gap, confession, POV, proof-first, contrast…) from `hooks.md`,
+- the hook: what is seen and the first line it complements, not repeats (no on-screen text in
+  Seedance),
 - the full short script in Rioplatense Spanish (fits the duration: ~2.5 words per second),
 - duration (15 s by default; 4–30 s possible),
 - what changes between ideas: one dimension at a time (hook, angle or format).
 
-Every product statement must be in the allowed list. Default duration 15 s unless the user asks.
+Every product statement must be in the allowed list. Run the script through the gate and the
+self-check in `copy.md` before showing it; mark missing proof as `[NEED: …]` instead of
+inventing it, and tell the user what is missing. Default duration 15 s unless the user asks.
 Once they pick, save the chosen idea and the rejected ones, with the reason if they gave one
 (`memoria.md`).
 
