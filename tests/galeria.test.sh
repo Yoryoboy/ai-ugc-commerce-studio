@@ -293,7 +293,8 @@ run "$W" stop
 # --- version flap: two sessions with different plugin versions do not replace each other's server ----
 # The server is replaced only by a caller whose plugin is newer (or the same version from another
 # folder); a server of a newer plugin is kept and the older caller uses it. Versions compare by
-# number, per part (0.10.0 is newer than 0.9.0).
+# number, per part (99.10.0 is newer than 99.9.0). The fixture versions sit far above any real release
+# so the checks keep holding as the plugin version grows.
 plugin_copy() { # <name> <version>: a copy of the plugin that says it is that version
   cp -R "$CLAUDE_PLUGIN_ROOT" "$TMP/$1"
   sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$2\"/" "$TMP/$1/.claude-plugin/plugin.json" && rm -f "$TMP/$1/.claude-plugin/plugin.json.bak"
@@ -305,9 +306,9 @@ as_plugin() { # <name> <studio> <command>: runs that copy's launcher in a studio
   ERR=$(cat "$TMP/err")
 }
 plugin_copy plugin-0.0.1 0.0.1
-plugin_copy plugin-0.9.0 0.9.0
-plugin_copy plugin-0.10.0 0.10.0
-plugin_copy plugin-0.10.1 0.10.1
+plugin_copy plugin-99.9.0 99.9.0
+plugin_copy plugin-99.10.0 99.10.0
+plugin_copy plugin-99.10.1 99.10.1
 plugin_copy plugin-same "$PLUGIN_VERSION"
 F=$(new_studio flap)
 run "$F" start
@@ -340,28 +341,28 @@ check "same version, other folder: it runs from that folder" "$(state "$F" plugi
 as_plugin plugin-same "$F" start
 check "same version, same folder: the server is kept" "$(state "$F" pid)" "$PIDB"
 # A newer plugin replaces it.
-as_plugin plugin-0.10.0 "$F" start
+as_plugin plugin-99.10.0 "$F" start
 PIDC=$(state "$F" pid)
 [ "$PIDC" != "$PIDB" ] && pass "newer plugin: a new server runs" || fail "newer plugin: a new server runs"
-check "newer plugin: the new server has its version" "$(state "$F" version)" "0.10.0"
+check "newer plugin: the new server has its version" "$(state "$F" version)" "99.10.0"
 sleep 0.2
 kill -0 "$PIDB" 2>/dev/null && fail "newer plugin: the old server is stopped" || pass "newer plugin: the old server is stopped"
-# 0.9.0 is older than 0.10.0 (numbers, not text): the 0.10.0 server is kept, also for 0.4.3.
-as_plugin plugin-0.9.0 "$F" start
-check "0.9.0 against a 0.10.0 server: kept (compared as numbers)" "$(state "$F" pid)" "$PIDC"
+# 99.9.0 is older than 99.10.0 (numbers, not text): the 99.10.0 server is kept, also for 0.4.3.
+as_plugin plugin-99.9.0 "$F" start
+check "99.9.0 against a 99.10.0 server: kept (compared as numbers)" "$(state "$F" pid)" "$PIDC"
 run "$F" start
-check "$PLUGIN_VERSION against a 0.10.0 server: kept" "$(state "$F" pid)" "$PIDC"
-check "$PLUGIN_VERSION against a 0.10.0 server: exit 0, the server's address" "$CODE $OUT" "0 http://127.0.0.1:$(state "$F" port)/"
-as_plugin plugin-0.10.0 "$F" start
+check "$PLUGIN_VERSION against a 99.10.0 server: kept" "$(state "$F" pid)" "$PIDC"
+check "$PLUGIN_VERSION against a 99.10.0 server: exit 0, the server's address" "$CODE $OUT" "0 http://127.0.0.1:$(state "$F" port)/"
+as_plugin plugin-99.10.0 "$F" start
 check "same plugin as the server: kept" "$(state "$F" pid)" "$PIDC"
-as_plugin plugin-0.10.1 "$F" start
-[ "$(state "$F" pid)" != "$PIDC" ] && pass "0.10.1 against a 0.10.0 server: replaced" || fail "0.10.1 against a 0.10.0 server: replaced"
-check "0.10.1 against a 0.10.0 server: the new server has its version" "$(state "$F" version)" "0.10.1"
+as_plugin plugin-99.10.1 "$F" start
+[ "$(state "$F" pid)" != "$PIDC" ] && pass "99.10.1 against a 99.10.0 server: replaced" || fail "99.10.1 against a 99.10.0 server: replaced"
+check "99.10.1 against a 99.10.0 server: the new server has its version" "$(state "$F" version)" "99.10.1"
 # Alternating sessions of two plugin versions settle on the newer one instead of replacing each other.
 PIDD=$(state "$F" pid)
 for n in 1 2 3; do
-  as_plugin plugin-0.9.0 "$F" start
-  as_plugin plugin-0.10.1 "$F" start
+  as_plugin plugin-99.9.0 "$F" start
+  as_plugin plugin-99.10.1 "$F" start
 done
 check "alternating sessions: one server, never replaced" "$(state "$F" pid)" "$PIDD"
 check "alternating sessions: one process" "$(ps -eo command | grep -c "[s]ervidor.mjs --studio $F\$")" "1"
