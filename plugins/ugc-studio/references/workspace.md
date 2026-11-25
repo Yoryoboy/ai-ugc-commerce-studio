@@ -33,7 +33,7 @@ small local server (see "Gallery server, archive and trash"); `galeria.html` onl
         │   └── referencias/        originals the user gave: manual, PDFs, images, notas.md
         └── <productId>/
             ├── producto.json
-            ├── ficha.md            product sheet with allowed and forbidden claims
+            ├── ficha.md            product sheet: claims, customer language, objections, forces
             ├── fotos/              product photos, original names
             ├── creativos/          Meta Ads creatives (see creativo.json)
             │   └── <creativoId>/
@@ -179,6 +179,25 @@ relative to the product folder.
 
 The client and product come from the folder path, so `video.json` does not repeat them.
 
+## ficha.md
+
+Free-form Markdown the skills read; the gallery ignores it. Besides title, price, attributes and
+the allowed and forbidden claims (`claims-rules.md`), it holds the customer evidence
+(`producto.md` step 2.3):
+
+- `## Lenguaje del cliente`: verbatim quotes, each with source (`pregunta ML`, `reseña ML`…),
+  date and confidence. It is evidence of how buyers talk, never a claim.
+- `## Objeciones`: what makes buyers hesitate, with confidence and sources.
+- `## Fuerzas`: `Empuje` (what pushes them from what they use now), `Atracción` (what pulls them to
+  this product), `Hábito` (what keeps them where they are), `Ansiedad` (what worries them about
+  buying), each with confidence and sources.
+- Confidence is `alta` (3+ independent sources, recent), `media` or `baja`. With no evidence the
+  items are `hipótesis (proxy)`, marked as such, never invented quotes.
+- Add `Evidencia actualizada: AAAA-MM-DD` to the section; evidence older than ~30 days is refreshed
+  when the user asks.
+
+Old sheets without these sections stay valid.
+
 ## marca.json
 
 One brand kit per client, in `clientes/<profileId>/marca/`. Creatives in template mode take their
@@ -204,6 +223,11 @@ colors, fonts and logo from it.
   "audience": "Mujeres de 30 a 50 que cuidan su descanso",
   "dos": ["Hablar de vos", "Mostrar el producto en uso"],
   "donts": ["Nunca el logo sobre rojo", "No usar la palabra barato"],
+  "voice": [
+    { "attribute": "Cercana", "is": "Habla de vos, como una amiga", "isNot": "Informal al punto de la chabacanería" },
+    { "attribute": "Concreta", "is": "Dice qué hace el producto", "isNot": "Promesas vagas o exageradas" }
+  ],
+  "avoidWords": ["barato", "oferta imperdible"],
   "sources": [
     { "type": "skill", "name": "acme-marca" },
     { "type": "file", "path": "referencias/manual-de-marca.pdf" },
@@ -222,7 +246,9 @@ colors, fonts and logo from it.
 - Optional, read by the skills and ignored by the template and the gallery: `palette` (brand
   colors beyond the four roles), `fonts.brand` (the real brand font when it is not on Google
   Fonts; `heading`/`body` hold the closest Google Font), `logos` (every logo version with its use;
-  files inside `marca/`), `audience`, `dos` and `donts` (brand rules for copy and images) and
+  files inside `marca/`), `audience`, `dos` and `donts` (brand rules for copy and images),
+  `voice` (3 to 5 attributes, each `attribute` with `is` and `isNot`: what it means and what it
+  does not), `avoidWords` (array of words and phrases the copy never uses) and
   `sources` (where the kit came from: a client skill by `name`, a file in `referencias/` by
   `path`, a `url`, or `"type": "proposed"` for what was proposed with no source).
 - `referencias/` keeps the originals the user gave, with their original names; pasted text goes
