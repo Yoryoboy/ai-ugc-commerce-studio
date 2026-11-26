@@ -194,39 +194,98 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .subhead { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: baseline; }
 
 /* detail */
-.detail { display: grid; gap: 20px; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); align-items: start; }
+.detail { display: grid; gap: 24px; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); align-items: start; }
 @media (max-width: 760px) { .detail { grid-template-columns: minmax(0, 1fr); } }
-.player { display: grid; gap: 10px; }
+.player { display: grid; gap: 10px; min-width: 0; }
 .player .media { border-radius: var(--r); border: 1px solid var(--border); }
 .versions { display: flex; flex-wrap: wrap; gap: 6px; }
 .info { display: grid; gap: 16px; min-width: 0; }
-.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
-.fact.wide { grid-column: 1 / -1; }
-.fact { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+/* facts: one hairline list (label | value, DS .dl), so a missing value never leaves a hole */
+.facts { margin: 0; display: grid; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); min-width: 0; }
+.fact { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--border); min-width: 0; }
+.fact:last-child { border-bottom: 0; }
+.fact dt { font-size: 12px; line-height: 18px; color: var(--text-3); }
+.fact dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 560px) { .fact { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
 .script { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 12px 16px; white-space: pre-wrap; }
 .scenes { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
 .scenes a { display: grid; gap: 4px; color: var(--text-3); font-size: 12px; }
 .scenes img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: var(--r); border: 1px solid var(--border); background: var(--surface-2); }
-.pieces { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; }
-.piece { flex: 0 0 auto; display: grid; gap: 6px; width: min(300px, 78vw); margin: 0; }
-.piece.r9x16 { width: min(225px, 60vw); }
-@media (max-width: 560px) { .pieces.static { gap: 12px; } .pieces.static .piece { width: 50vw; } .pieces.static .piece.r9x16 { width: 33vw; } }
-.cols .fact { align-content: start; }
-.piece .shot { display: block; border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; background: var(--surface-2); }
-.piece .shot img { width: 100%; display: block; aspect-ratio: 4 / 5; object-fit: cover; }
-.piece.r9x16 .shot img { aspect-ratio: 9 / 16; }
-.piece.r1x1 .shot img { aspect-ratio: 1 / 1; }
-/* Carousel cards (tarjeta-N) keep their own ratio (1:1 or 4:5): never cropped. */
-.piece.tarjeta .shot img { aspect-ratio: auto; height: auto; object-fit: contain; }
-.piece .placeholder { aspect-ratio: 4 / 5; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--text-3); font-size: 12px; }
-.piece.r9x16 .placeholder { aspect-ratio: 9 / 16; }
-.olds { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); }
-.olds a { display: grid; gap: 2px; justify-items: center; color: var(--text-3); }
-.olds img { width: 44px; height: 44px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surface-2); }
+/* Pieces of a creative: each frame has its ratio before the image loads and every piece of a row is
+   --ph tall, so they line up at the base and their captions and older versions share one line. The
+   image leads the page: 480px tall on a desktop (static), 400px for carousel cards. */
+.pieces { --ph: min(480px, calc((100vw - 48px) / 1.42)); display: flex; gap: 16px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; }
+.pieces.carousel { --ph: min(400px, calc(100vw - 48px)); }
+.piece { flex: 0 0 auto; display: grid; gap: 6px; align-content: start; width: calc(var(--ph) * 4 / 5); margin: 0; }
+.piece.r9x16 { width: calc(var(--ph) * 9 / 16); }
+.piece.r1x1 { width: var(--ph); }
+.piece .shot { display: block; aspect-ratio: 4 / 5; border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; background: var(--surface-2); }
+.piece.r9x16 .shot { aspect-ratio: 9 / 16; }
+.piece.r1x1 .shot { aspect-ratio: 1 / 1; }
+.piece .shot img { width: 100%; height: 100%; display: block; object-fit: cover; }
+/* Carousel cards (tarjeta-N) are 4:5; a card of another ratio is shown whole inside the frame, never cropped. */
+.piece.tarjeta .shot img { object-fit: contain; }
+.piece .placeholder { height: 100%; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--text-3); font-size: 12px; }
+.olds { display: grid; gap: 4px; }
+.olds-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.olds a { display: grid; gap: 2px; justify-items: center; font-size: 12px; line-height: 18px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.olds a:hover { color: var(--text); text-decoration: none; }
+.olds img { width: 48px; height: 48px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surface-2); }
 .cols { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
-@media (max-width: 760px) { .cols { grid-template-columns: minmax(0, 1fr); } }
-.copyrow { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
+.cols.ad { gap: 24px; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); }
+@media (max-width: 760px) { .cols, .cols.ad { grid-template-columns: minmax(0, 1fr); } }
+/* Copy rows: the Copiar button sits on the first line (label) of every row, whatever the text length. */
+.copyrow { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; }
+.copyrow .btn { margin-top: -4px; }
 .copyrow p { overflow-wrap: anywhere; }
+
+/* Ad preview: an original sketch of where a feed ad (or a story) puts the client, the text, the
+   piece, the headline and the button. Not Meta's interface: no logos of theirs, the studio's tokens. */
+.admock-wrap { display: grid; gap: 10px; min-width: 0; justify-items: start; }
+.admock-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-height: 24px; width: 100%; max-width: 380px; }
+.admock-bar .label { margin-right: auto; }
+.admock-modes { display: inline-flex; gap: 6px; }
+.admock { position: relative; width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; display: flex; flex-direction: column; }
+.am-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; min-width: 0; }
+.am-avatar { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; overflow: hidden; background: var(--surface-3); border: 1px solid var(--border); color: var(--text-2); font-weight: 600; }
+.am-avatar.logo { background: #ffffff; }
+.am-avatar img { width: 100%; height: 100%; padding: 3px; object-fit: contain; display: block; }
+.am-who { display: grid; min-width: 0; }
+.am-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am-sub { font-size: 12px; line-height: 16px; color: var(--text-3); }
+.am-text, .am-note { padding: 0 12px 10px; white-space: pre-line; overflow-wrap: anywhere; }
+.am-note { font-size: 12px; line-height: 18px; color: var(--text-3); }
+.am-more { padding: 0; border: 0; background: none; color: var(--text-2); font-weight: 500; cursor: pointer; }
+.am-more:hover { color: var(--text); text-decoration: underline; }
+.am-media { position: relative; aspect-ratio: 4 / 5; overflow: hidden; background: var(--surface-2); }
+.am-media.r1x1 { aspect-ratio: 1 / 1; }
+.am-media > img, .am-media > video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.am-media > .placeholder, .am-card .placeholder { height: 100%; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--text-3); font-size: 12px; }
+.am-media.strip { aspect-ratio: auto; display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 12px 10px; background: none; }
+.am-card { flex: 0 0 78%; aspect-ratio: 4 / 5; scroll-snap-align: center; border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; background: var(--surface-2); }
+.am-card img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.am-foot { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--surface-2); border-top: 1px solid var(--border); }
+.am-media.strip + .am-foot { border-top: 0; }
+.am-foot-text { flex: 1 1 auto; display: grid; min-width: 0; }
+.am-headline { font-weight: 600; overflow-wrap: anywhere; }
+.am-desc { font-size: 12px; line-height: 18px; color: var(--text-2); overflow-wrap: anywhere; }
+.am-cta { flex: none; margin-left: auto; height: 30px; display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: var(--r); background: var(--surface-3); color: var(--text); font-weight: 500; white-space: nowrap; }
+/* Stories: the 9:16 fills the frame; the client and the button float over it. The bottom offset keeps
+   the button clear of a video's controls. Optional bands show what the app covers (top 14%, bottom 35%). */
+.admock.stories { aspect-ratio: 9 / 16; }
+.admock.stories .am-media { position: absolute; inset: 0; aspect-ratio: auto; }
+.admock.stories .am-head { position: absolute; z-index: 2; top: 10px; left: 10px; max-width: calc(100% - 20px); padding: 4px 12px 4px 4px; background: var(--surface); border-radius: var(--r-full); }
+.admock.stories .am-text { display: none; }
+.admock.stories .am-note { position: absolute; z-index: 2; left: 10px; right: 10px; bottom: 56px; padding: 6px 10px; text-align: center; background: var(--surface); border-radius: var(--r); }
+.admock.stories .am-foot { position: absolute; z-index: 2; left: 10px; right: 10px; bottom: 56px; justify-content: center; padding: 0; background: none; border: 0; }
+.admock.stories .am-foot-text { display: none; }
+.admock.stories .am-cta { margin: 0; border-radius: var(--r-full); background: var(--surface); }
+.am-zones { display: none; }
+.admock.stories.zones .am-zones { display: block; position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.am-zone { position: absolute; left: 0; right: 0; display: grid; justify-items: center; align-items: end; padding: 6px; background: color-mix(in srgb, var(--warn) 22%, transparent); }
+.am-zone.top { top: 0; height: 14%; border-bottom: 1px dashed var(--warn); }
+.am-zone.bottom { bottom: 0; height: 35%; align-items: start; border-top: 1px dashed var(--warn); }
+.am-zone span { font-size: 12px; line-height: 18px; padding: 0 6px; border-radius: var(--r-sm); background: var(--surface); color: var(--text-2); }
 .swatches { display: flex; flex-wrap: wrap; gap: 10px; }
 .swatch { display: grid; gap: 4px; justify-items: start; font-size: 12px; }
 .swatch .num { font-family: var(--mono); }
@@ -1844,12 +1903,26 @@ async function viewElemento(r, my) {
   const common = [crumbs(crumbList), h("a", { href: back }, "← Volver")];
   if (e.error) common.push(h("div", { class: "notice", role: "status" }, "Este archivo está dañado y no se puede mostrar completo. Pedile a Claude que lo arregle: " + e.error));
   if (e.kind === "creative") mount(common, await creativeDetail(e, after, my));
-  else if (e.kind === "video") mount(common, videoDetail(e, after));
+  else if (e.kind === "video") mount(common, await videoDetail(e, after));
   else mount(common, await actorDetail(e, after));
   state.view = { refresh: () => route(true) };
 }
 
-const fact = (label, value, wide) => (value ? h("div", { class: wide ? "fact wide" : "fact" }, h("span", { class: "label" }, label), h("span", {}, value)) : null);
+// One row of a .facts list (a <dl>); a missing value leaves no row, so the list never has holes.
+const fact = (label, value) => (value ? h("div", { class: "fact" }, h("dt", {}, label), h("dd", {}, value)) : null);
+
+// The client's marca item (null when it has none); a lost connection still stops the view.
+async function loadBrand(profileId) {
+  try { return await api("/api/elemento?" + qs({ ruta: "clientes/" + profileId + "/marca" })); } catch (err) {
+    if (err.status === 0 || err.status === 401) throw err;
+    return null;
+  }
+}
+// Studio path of the client's logo, only when marca.json names a file that is there.
+function brandLogo(b) {
+  const j = b && b.json && typeof b.json === "object" ? b.json : {};
+  return typeof j.logo === "string" && (b.files || []).includes(j.logo) ? b.path + "/" + j.logo : null;
+}
 
 function brandBlock(b) {
   const j = b.json && typeof b.json === "object" ? b.json : {};
@@ -1860,7 +1933,7 @@ function brandBlock(b) {
       h("i", { style: "background:" + colors[k], role: "img", "aria-label": label + " " + colors[k] }),
       h("span", {}, label), h("span", { class: "num muted" }, colors[k])));
   const fonts = j.fonts ? [j.fonts.heading, j.fonts.body].filter(Boolean).join(" / ") : "";
-  const logo = typeof j.logo === "string" && (b.files || []).includes(j.logo) ? b.path + "/" + j.logo : null;
+  const logo = brandLogo(b);
   return h("div", { class: "group" },
     h("span", { class: "label" }, "Marca" + (j.name ? " · " + j.name : "")),
     logo ? h("div", { class: "logo-box" }, h("img", { src: url(logo), alt: "Logo de " + (j.name || "la marca") })) : null,
@@ -1873,8 +1946,7 @@ async function creativeDetail(e, after, my) {
   const j = e.json && typeof e.json === "object" ? e.json : {};
   const name = e.title;
   const isCarousel = j.type === "carousel";
-  let brand = null;
-  try { brand = await api("/api/elemento?" + qs({ ruta: "clientes/" + e.profileId + "/marca" })); } catch (err) { if (err.status === 0 || err.status === 401) throw err; }
+  const brand = await loadBrand(e.profileId);
   const piece = (p) => {
     const ratio = /^\d+x\d+$/.test(p.slot) ? " r" + p.slot : /^tarjeta-\d+$/.test(p.slot) ? " tarjeta" : "";
     return h("figure", { class: "piece" + ratio },
@@ -1882,33 +1954,105 @@ async function creativeDetail(e, after, my) {
         ? viewable(p.current.src, name + " · " + p.label + " · versión " + p.current.n, { class: "shot" }, picture(p.current.src, 960, name + " · " + p.label))
         : h("div", { class: "shot" }, h("div", { class: "placeholder" }, "Sin imagen todavía")),
       h("figcaption", { class: "meta" }, p.label + (p.current ? " · versión " + p.current.n : "")),
-      p.older.length ? h("div", { class: "olds" }, "Anteriores",
-        p.older.map((o) => viewable(o.src, name + " · " + p.label + " · versión " + o.n, {}, picture(o.src, 240, ""), "v" + o.n))) : null);
+      p.older.length ? h("div", { class: "olds" }, h("span", { class: "label" }, "Anteriores"),
+        h("div", { class: "olds-row" }, p.older.map((o) => viewable(o.src, name + " · " + p.label + " · versión " + o.n, {}, picture(o.src, 240, ""), "v" + o.n)))) : null);
   };
   const k = j.concept || {};
   const mode = j.textMode === "template" ? "Plantilla" + (j.layout ? " · " + j.layout : "") : j.textMode === "integrated" ? "Texto en la imagen" : null;
   const adCopy = adCopyGroup(j);
   const pieces = e.pieces || [];
+  // The ad preview: the 4:5 (or 1:1) piece in the feed, the 9:16 in stories, every card for a carousel.
+  const slot = (s) => pieces.find((p) => p.slot === s && p.current) || null;
+  const feedPiece = isCarousel ? null : slot("4x5") || slot("1x1") || slot("9x16");
+  const storyPiece = isCarousel ? null : slot("9x16");
+  const shotOf = (p) => (p ? picture(p.current.src, 960, name + " · " + p.label) : h("div", { class: "placeholder" }, "Sin imagen todavía"));
+  const mock = adMock({
+    copy: j.copy, client: e.clientName || clientName(e.profileId), logo: brandLogo(brand), stories: !!storyPiece,
+    media: isCarousel
+      ? h("div", { class: "am-media strip", role: "group", tabindex: "0", "aria-label": "Tarjetas del carrusel" }, pieces.map((p) => h("div", { class: "am-card" }, shotOf(p.current ? p : null))))
+      : h("div", { class: "am-media" + (feedPiece && feedPiece.slot === "1x1" ? " r1x1" : "") }),
+    fill: isCarousel ? null : (media, modo) => media.replaceChildren(shotOf(modo === "stories" ? storyPiece : feedPiece)),
+  });
   return h("section", { class: "section" },
     h("div", { class: "info" },
       h("div", { class: "pills" }, e.status ? pill(e.status) : null, e.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null),
       h("h1", {}, name),
       h("p", { class: "meta" }, isCarousel ? "Carrusel · " + plural(pieces.length, "tarjeta", "tarjetas") : "Estática"),
       detailActions(e, after)),
-    pieces.length ? h("div", { class: "pieces" + (!isCarousel ? " static" : "") }, pieces.map(piece))
+    pieces.length ? h("div", { class: "pieces " + (isCarousel ? "carousel" : "static") }, pieces.map(piece))
       : h("div", { class: "empty" }, h("p", { class: "muted" }, "Todavía no hay imágenes de este creativo.")),
-    h("div", { class: adCopy ? "cols" : "info" },
-      adCopy ? h("div", { class: "info" }, adCopy) : null,
+    h("div", { class: "cols ad" },
+      h("div", { class: "info" }, mock),
       h("div", { class: "info" },
-        h("div", { class: "facts" },
-          fact("Producto", e.productTitle || e.productId, true),
+        adCopy,
+        h("dl", { class: "facts" },
+          fact("Producto", e.productTitle || e.productId),
           fact("Ángulo", k.angle), fact("Conciencia", k.awareness), fact("Visual", k.visual),
-          fact("Por qué es distinto", k.why, true),
+          fact("Por qué es distinto", k.why),
           fact("Actor", e.actorId ? actorName(e.actorId) : "Solo producto"),
           fact("Texto", mode), fact("Créditos", fmtCredits(j.credits)),
           fact("Versiones", e.versionCount ? String(e.versionCount) : null),
           fact("Lote", e.batch), fact("Actualizado", fmtDate(e.updatedAt))),
         brand ? brandBlock(brand) : null)));
+}
+
+// Meta cuts the primary text of a feed ad near 125 characters and offers «Ver más».
+const AD_TEXT_MAX = 125;
+function adText(text) {
+  const p = h("p", { class: "am-text", tabindex: "-1" });
+  if (text.length <= AD_TEXT_MAX) { p.append(text); return p; }
+  const cut = text.slice(0, AD_TEXT_MAX);
+  const space = cut.lastIndexOf(" ");
+  const short = (space > AD_TEXT_MAX * 0.6 ? cut.slice(0, space) : cut).replace(/[\s.,;:]+$/, "");
+  p.append(short + "… ", h("button", { class: "am-more", type: "button", onclick: () => { p.replaceChildren(text); p.focus(); } }, "Ver más"));
+  return p;
+}
+
+// Preview of a piece as a feed ad: the client (logo from marca or its initial), "Publicidad", the
+// primary text, the piece and a bottom bar with headline, description and the button. With a 9:16
+// (`stories`) it toggles to a story, where bands can show what the app covers. Without `copy` it
+// shows the piece and a neutral note, never invented text. `fill(media, modo)` draws the piece of
+// each mode into `media`; a video passes its own stage and no `fill`.
+function adMock(o) {
+  const cp = o.copy && typeof o.copy === "object" ? o.copy : {};
+  const str = (v) => (typeof v === "string" && v.trim() ? v : null);
+  const [primary, headline, description, cta] = [cp.primaryText, cp.headline, cp.description, cp.cta].map(str);
+  const client = o.client || "";
+  const avatar = o.logo
+    ? h("span", { class: "am-avatar logo" }, h("img", { src: url(o.logo), alt: "" }))
+    : h("span", { class: "am-avatar", "aria-hidden": "true" }, client.trim().charAt(0).toUpperCase() || "?");
+  const frame = h("article", { class: "admock" },
+    h("div", { class: "am-head" }, avatar, h("div", { class: "am-who" }, h("span", { class: "am-name" }, client), h("span", { class: "am-sub" }, "Publicidad"))),
+    primary || headline || description || cta ? (primary ? adText(primary) : null) : h("p", { class: "am-note" }, "Todavía no tiene texto del anuncio"),
+    o.media,
+    headline || description || cta ? h("div", { class: "am-foot" },
+      headline || description ? h("div", { class: "am-foot-text" },
+        headline ? h("span", { class: "am-headline" }, headline) : null,
+        description ? h("span", { class: "am-desc" }, description) : null) : null,
+      cta ? h("span", { class: "am-cta" }, cta) : null) : null,
+    o.stories ? h("div", { class: "am-zones", "aria-hidden": "true" },
+      h("div", { class: "am-zone top" }, h("span", {}, "Lo tapa la app")),
+      h("div", { class: "am-zone bottom" }, h("span", {}, "Lo tapa la app"))) : null);
+  const bar = h("div", { class: "admock-bar" }, h("span", { class: "label" }, "Vista previa del anuncio"));
+  let modo = "feed";
+  let zones = null;
+  const paint = () => {
+    frame.classList.toggle("stories", modo === "stories");
+    frame.setAttribute("aria-label", "Vista previa del anuncio " + (modo === "stories" ? "en historias" : "en el feed"));
+    for (const b of bar.querySelectorAll("[data-modo]")) b.setAttribute("aria-pressed", String(b.dataset.modo === modo));
+    if (zones) zones.hidden = modo !== "stories";
+    if (o.fill) o.fill(o.media, modo);
+  };
+  if (o.stories) {
+    const pick = (m) => () => { if (modo !== m) { modo = m; paint(); } };
+    zones = h("button", { class: "chip", type: "button", "aria-pressed": "false", title: "Marca el 14% de arriba y el 35% de abajo, que tapa la app",
+      onclick: () => { const on = frame.classList.toggle("zones"); zones.setAttribute("aria-pressed", String(on)); } }, "Zonas tapadas");
+    bar.append(h("div", { class: "admock-modes", role: "group", "aria-label": "Formato de la vista previa" },
+      h("button", { class: "chip", type: "button", "data-modo": "feed", onclick: pick("feed") }, "Feed"),
+      h("button", { class: "chip", type: "button", "data-modo": "stories", onclick: pick("stories") }, "Stories")), zones);
+  }
+  paint();
+  return h("div", { class: "admock-wrap" }, bar, frame);
 }
 
 // The Meta ad text (copy and adName) of a creative or video, one row per field with its Copiar
@@ -1924,15 +2068,16 @@ function adCopyGroup(j) {
   return h("div", { class: "group" }, h("span", { class: "label" }, "Texto del anuncio"), rows.map(row));
 }
 
-function videoDetail(e, after) {
+async function videoDetail(e, after) {
   const j = e.json && typeof e.json === "object" ? e.json : {};
+  const brand = await loadBrand(e.profileId);
   const versions = e.versions || [];
   const scenes = e.scenes || [];
   const cur = e.current;
   const sources = [];
   if (e.finalVideo) sources.push({ label: "Final 1080p", src: e.finalVideo, poster: cur && cur.thumb });
   for (const v of [...versions].reverse()) if (v.video) sources.push({ label: "Versión " + v.n, src: v.video, poster: v.thumb });
-  const stage = h("div", { class: "media" });
+  const stage = h("div", { class: "am-media" });
   const buttons = h("div", { class: "versions", role: "group", "aria-label": "Versiones" });
   const show = (i) => {
     const s = sources[i];
@@ -1943,17 +2088,19 @@ function videoDetail(e, after) {
   if (sources.length) show(0);
   else stage.append(e.cover ? picture(e.cover, 960, "") : h("div", { class: "placeholder" }, "Todavía no hay video"));
   const vtitle = e.title;
+  // The player is the ad preview: the video plays inside the feed ad (4:5 crop) or the story (9:16).
+  const mock = adMock({ copy: j.copy, client: e.clientName || clientName(e.profileId), logo: brandLogo(brand), stories: true, media: stage });
   return h("section", { class: "section" },
     h("div", { class: "detail" },
-      h("div", { class: "player" }, stage, sources.length > 1 ? buttons : null),
+      h("div", { class: "player" }, mock, sources.length > 1 ? buttons : null),
       h("div", { class: "info" },
         h("div", { class: "pills" }, e.status ? pill(e.status) : null, e.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null),
         h("h1", {}, vtitle),
         detailActions(e, after),
         h("div", { class: "links" }, exportButton("Exportar este video", exportRequest("video", vtitle, e.path), "Exportar este video: " + vtitle)),
-        h("div", { class: "facts" },
-          fact("Producto", e.productTitle || e.productId, true),
-          e.actorId ? h("div", { class: "fact" }, h("span", { class: "label" }, "Actor"), h("a", { href: hItem("actores/" + e.actorId) }, actorName(e.actorId))) : null,
+        h("dl", { class: "facts" },
+          fact("Producto", e.productTitle || e.productId),
+          e.actorId ? fact("Actor", h("a", { href: hItem("actores/" + e.actorId) }, actorName(e.actorId))) : null,
           fact("Duración", j.durationSec ? j.durationSec + " s" : null),
           fact("Créditos", fmtCredits(j.credits)),
           fact("Versiones", versions.length ? String(versions.length) : null),
@@ -1997,9 +2144,9 @@ async function actorDetail(e, after) {
         h("h1", {}, e.title),
         detailActions(e, after),
         h("div", { class: "links" }, exportButton("Exportar actor", exportRequest("actor", e.title, e.path), "Exportar actor " + e.title)),
-        h("div", { class: "facts" },
+        h("dl", { class: "facts" },
           fact("Género", j.gender), fact("Edad aparente", j.apparentAge ? j.apparentAge + " años" : null), fact("Versión", j.version),
-          fact("Estilo", j.style, true), fact("Personalidad", j.personality, true), fact("Créditos", fmtCredits(j.credits))),
+          fact("Estilo", j.style), fact("Personalidad", j.personality), fact("Créditos", fmtCredits(j.credits))),
         h("div", { class: "tags" }, (j.fitsNiches || []).map((n) => h("span", { class: "tag" }, n)), (j.avoidNiches || []).map((n) => h("span", { class: "tag no", title: "No encaja" }, n))),
         h("div", { class: "links" },
           h("a", { href: hSearch(new URLSearchParams({ tipo: "video", actor: e.actorId })) }, plural(nVideos, "video", "videos")),

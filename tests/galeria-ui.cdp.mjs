@@ -89,7 +89,16 @@ for (const n of [1, 2, 3]) { file(`${VID(V1)}/borrador-v${n}.mp4`, "video " + n)
 file(`${VID(V1)}/final.mp4`, "final"); file(`${VID(V1)}/prompt-v1.md`, "prompt");
 json(`${VID(V2)}/video.json`, { id: V2, title: "Video descartado de prueba", status: "discarded", versions: [{ n: 1 }], updatedAt: "2026-11-12T10:00:00Z" });
 file(`${VID(V2)}/borrador-v1.mp4`, "v"); png(`${VID(V2)}/thumb-v1.jpg`, "#666666", "270x480");
-json("clientes/beta/marca/marca.json", { name: "Beta Hogar" });
+json("clientes/beta/marca/marca.json", { name: "Beta Hogar", logo: "logo.png" });
+png("clientes/beta/marca/logo.png", "#224488", "200x200");
+// Only the ad preview step uses it: an ad text longer than the feed shows (it is cut with «Ver más»).
+const AD = "clientes/beta/MLB4/creativos/2026-11-19-x-anuncio";
+const AD_TEXT = "Tu dormitorio merece una luz cálida que no encandile. Este velador tiene tres intensidades, base de madera maciza y una pantalla de lino que suaviza todo.";
+json("clientes/beta/MLB4/producto.json", { profileId: "beta", productId: "MLB4", title: "Velador de noche" });
+json(`${AD}/creativo.json`, { id: "2026-11-19-x-anuncio", title: "Luz que no encandila", type: "static", status: "draft", batch: "2026-11-19-velador", slots: ["4x5", "9x16"],
+  concept: { angle: "Deseo" }, updatedAt: "2026-11-19T12:00:00Z",
+  copy: { primaryText: AD_TEXT, headline: "Velador de noche", description: "Envío gratis a todo el país", cta: "Más información" } });
+png(`${AD}/4x5-v1.png`, "#b08d57"); png(`${AD}/9x16-v1.png`, "#57b08d", "270x480");
 json("clientes/beta/MLB2/producto.json", { profileId: "beta", productId: "MLB2", title: "Lámpara de pie" });
 // Only the viewer step uses it, so no other step changes its images or counts it.
 const VIS = "clientes/beta/MLB2/creativos/2026-11-15-x-visor";
@@ -487,6 +496,123 @@ await step("ad copy: a video shows its Meta ad text with copy buttons like a cre
     "Botón=Comprar|Copiar botón",
     "Nombre del anuncio=MLA1_dolor_ana_estatica|Copiar nombre del anuncio",
   ]), "creative ad text still shown: " + JSON.stringify(crows));
+});
+
+const detailOf = async (rel, h1) => {
+  await page.hash("#/elemento/" + rel.split("/").map(encodeURIComponent).join("/"));
+  await page.waitFor(`document.querySelector("h1") && document.querySelector("h1").textContent === ${JSON.stringify(h1)}`, "detail of " + h1);
+};
+const imgsLoaded = (sel) => page.waitFor(`[...document.querySelectorAll(${JSON.stringify(sel)})].every((i) => i.complete)`, "images of " + sel, 6000);
+// Studio path of an <img> src, thumbnail or full file (the same form as srcOf).
+const SRC = `(i) => i ? decodeURIComponent(i.getAttribute("src").split("?")[0]).replace(/^\\/miniatura\\//, "/") : null`;
+
+await step("detail pieces: a static's 4:5 and 9:16 share one larger height, captions and older versions sit on one line; carousel cards keep a fixed 4:5 frame in one row", async () => {
+  await detailOf(CR(ids.dolor), "Agacharse ya no duele");
+  await imgsLoaded(".pieces img");
+  const f = await page.eval(`[...document.querySelectorAll(".pieces figure")].map((x) => { const i = x.querySelector(".shot img").getBoundingClientRect();
+    const o = x.querySelector(".olds");
+    return { cls: x.className, img: i.height, cap: x.querySelector("figcaption").getBoundingClientRect().top, olds: o ? o.getBoundingClientRect().top : null }; })`);
+  expect(f.length === 2 && /r4x5/.test(f[0].cls) && /r9x16/.test(f[1].cls), "pieces: " + JSON.stringify(f));
+  expect(Math.abs(f[0].img - f[1].img) <= 1, "4:5 and 9:16 images differ in height: " + JSON.stringify(f));
+  expect(f[0].img >= 440, "the pieces are not larger than before (4:5 was 375px, 9:16 400px): " + f[0].img);
+  expect(Math.abs(f[0].cap - f[1].cap) <= 1, "captions are not on one line: " + JSON.stringify(f));
+  expect(f[0].olds !== null && f[1].olds !== null && Math.abs(f[0].olds - f[1].olds) <= 1, "older versions are not on one line: " + JSON.stringify(f));
+  await page.eval(`document.querySelector(".pieces").scrollIntoView({ block: "start" }), true`);
+  await page.shot("04c-detalle-piezas-alineadas");
+
+  await detailOf(CR(ids.carrusel), "Carrusel de tres pasos");
+  const c = await page.eval(`[...document.querySelectorAll(".pieces figure .shot")].map((s) => { const r = s.getBoundingClientRect(); return { top: Math.round(r.top), h: r.height, ratio: getComputedStyle(s).aspectRatio }; })`);
+  expect(c.length === 3, "carousel cards: " + JSON.stringify(c));
+  expect(c.every((x) => x.ratio === "4 / 5"), "carousel frames are not a fixed 4:5 before the images load: " + JSON.stringify(c));
+  expect(new Set(c.map((x) => x.top)).size === 1 && Math.max(...c.map((x) => x.h)) - Math.min(...c.map((x) => x.h)) <= 1, "carousel cards are not one row of one height (the missing card included): " + JSON.stringify(c));
+  await detailOf(`${AL}/creativos/2026-11-18-x-tarjetas`, "Tres pasos");
+  await imgsLoaded(".pieces img");
+  const sq = await page.eval(`[...document.querySelectorAll(".pieces figure .shot")].map((s) => getComputedStyle(s).aspectRatio + "|" + getComputedStyle(s.querySelector("img")).objectFit)`);
+  expect(JSON.stringify(sq) === JSON.stringify(["4 / 5|contain", "4 / 5|contain"]), "square cards are not shown whole in the 4:5 frame: " + JSON.stringify(sq));
+});
+
+const mock = () => page.eval(`(() => { const m = document.querySelector(".admock"); if (!m) return null; const t = (s) => { const e = m.querySelector(s); return e ? e.textContent : null; };
+  const av = m.querySelector(".am-avatar");
+  return { stories: m.classList.contains("stories"), name: t(".am-name"), sub: t(".am-sub"), avatar: av ? (av.querySelector("img") ? "img:" + decodeURIComponent(av.querySelector("img").getAttribute("src")) : "text:" + av.textContent) : null,
+    text: t(".am-text"), note: t(".am-note"), headline: t(".am-headline"), desc: t(".am-desc"), cta: t(".am-cta"), img: (${SRC})(m.querySelector(".am-media img")),
+    video: !!m.querySelector(".am-media video"), modes: [...document.querySelectorAll(".admock-bar [data-modo]")].map((b) => b.textContent + "=" + b.getAttribute("aria-pressed")) }; })()`);
+const toMock = () => page.eval(`document.querySelector(".admock").scrollIntoView({ block: "center" }), true`);
+const modo = (name) => page.eval(`(() => { const b = [...document.querySelectorAll(".admock-bar button")].find((x) => x.textContent === ${JSON.stringify(name)}); if (!b) throw new Error("no preview button: ${name}"); b.click(); return true; })()`);
+
+await step("ad preview: a creative with copy shows its text, headline and button around the 4:5 piece under the client's name; Stories swaps to the 9:16 with the covered zones; without copy a neutral note and no button", async () => {
+  await detailOf(CR(ids.dolor), "Agacharse ya no duele");
+  let m = await mock();
+  expect(m, "no ad preview in the creative detail");
+  expect(m.name === "Acme SRL" && m.sub === "Publicidad" && m.avatar === "text:A", "ad header (client, Publicidad, initial without a logo): " + JSON.stringify(m));
+  expect(m.text === "Subí la cama 10 cm." && m.headline === "Patas de madera" && m.cta === "Comprar" && m.desc === null && m.note === null, "ad text: " + JSON.stringify(m));
+  expect(!m.stories && m.img === srcOf(`${CR(ids.dolor)}/4x5-v2.png`), "feed preview shows " + m.img);
+  expect(JSON.stringify(m.modes) === JSON.stringify(["Feed=true", "Stories=false"]), "preview modes: " + JSON.stringify(m.modes));
+  await toMock();
+  await page.shot("04d-anuncio-feed");
+  await modo("Stories");
+  m = await mock();
+  expect(m.stories && m.img === srcOf(`${CR(ids.dolor)}/9x16-v2.png`) && m.cta === "Comprar", "stories preview: " + JSON.stringify(m));
+  expect(JSON.stringify(m.modes) === JSON.stringify(["Feed=false", "Stories=true"]), "preview modes in stories: " + JSON.stringify(m.modes));
+  await modo("Zonas tapadas");
+  const z = await page.eval(`(() => { const f = document.querySelector(".admock").getBoundingClientRect(); const [t, b] = [...document.querySelectorAll(".admock .am-zone")].map((e) => e.getBoundingClientRect());
+    return { top: Math.abs(t.height - f.height * .14) <= 1.5 && Math.abs(t.top - f.top) <= 1.5, bottom: Math.abs(b.height - f.height * .35) <= 1.5 && Math.abs(b.bottom - f.bottom) <= 1.5, vis: [t.height, b.height, f.height] }; })()`);
+  expect(z.top && z.bottom, "covered zones are not the top 14% and bottom 35% of the story: " + JSON.stringify(z.vis));
+  await toMock();
+  await page.shot("04e-anuncio-stories");
+  await modo("Feed");
+  m = await mock();
+  expect(!m.stories && m.img === srcOf(`${CR(ids.dolor)}/4x5-v2.png`), "back to feed shows " + m.img);
+
+  await detailOf(CR(ids.precio), "Precio bajo, piso firme");
+  m = await mock();
+  expect(m && m.note === "Todavía no tiene texto del anuncio", "no-copy note: " + JSON.stringify(m));
+  expect(m.cta === null && m.text === null && m.headline === null && m.desc === null, "a creative without copy shows invented text or a button: " + JSON.stringify(m));
+  expect(m.img === srcOf(`${CR(ids.precio)}/4x5-v1.png`) && m.modes.length === 0, "without a 9:16 there is no Stories toggle and the 4:5 is shown: " + JSON.stringify(m));
+
+  await detailOf(AD, "Luz que no encandila");
+  m = await mock();
+  expect(m.avatar === "img:/clientes/beta/marca/logo.png" && m.name === "Beta Hogar", "client logo in the ad header: " + JSON.stringify(m));
+  expect(m.text !== AD_TEXT && m.text.endsWith("… Ver más") && AD_TEXT.startsWith(m.text.slice(0, -"… Ver más".length)) && m.text.length - "… Ver más".length <= 125,
+    "a text longer than 125 characters is not cut with «… Ver más»: " + m.text);
+  expect(m.headline === "Velador de noche" && m.desc === "Envío gratis a todo el país" && m.cta === "Más información", "headline, description and button: " + JSON.stringify(m));
+  await page.eval(`document.querySelector(".admock .am-more").click(), true`);
+  expect((await mock()).text === AD_TEXT, "«Ver más» does not show the whole text");
+  await toMock();
+  await page.shot("04f-anuncio-texto-largo");
+});
+
+await step("detail: copy buttons sit on the first line of every row, facts are one hairline list without holes (12px --text-3 labels)", async () => {
+  await detailOf(AD, "Luz que no encandila");
+  const rows = await page.eval(`[...document.querySelectorAll(".copyrow")].map((r) => { const t = r.getBoundingClientRect().top;
+    const mid = (el) => { const b = el.getBoundingClientRect(); return Math.round(b.top + b.height / 2 - t); };
+    return { btn: mid(r.querySelector("button")), label: mid(r.querySelector(".label")), h: r.getBoundingClientRect().height }; })`);
+  expect(rows.length === 4 && rows[0].h > rows[1].h, "copy rows (the first one wraps): " + JSON.stringify(rows));
+  expect(new Set(rows.map((r) => r.btn)).size === 1 && rows.every((r) => Math.abs(r.btn - r.label) <= 2), "Copiar buttons are not centered on the first line of each row: " + JSON.stringify(rows));
+  const facts = await page.eval(`(() => { const l = document.querySelector(".facts"); const lr = l.getBoundingClientRect();
+    const probe = document.createElement("span"); probe.style.color = "var(--text-3)"; document.body.append(probe); const want = getComputedStyle(probe).color; probe.remove();
+    return { tag: l.tagName, rows: [...l.children].map((f) => { const r = f.getBoundingClientRect(); const dt = f.querySelector("dt"); const s = dt ? getComputedStyle(dt) : {};
+      return { left: Math.round(r.left - lr.left), right: Math.round(lr.right - r.right), dt: dt ? dt.textContent : null, dd: (f.querySelector("dd") || {}).textContent || "", size: s.fontSize, color: s.color === want, line: getComputedStyle(f).borderBottomStyle }; }) }; })()`);
+  expect(facts.tag === "DL" && facts.rows.length >= 3, "facts are not a description list: " + JSON.stringify(facts));
+  expect(facts.rows.every((r) => r.dt && r.dd && r.left === facts.rows[0].left && r.right === facts.rows[0].right), "facts have holes or empty rows: " + JSON.stringify(facts.rows));
+  expect(facts.rows.every((r) => r.size === "12px" && r.color), "fact labels are not 12px --text-3: " + JSON.stringify(facts.rows));
+  expect(facts.rows.slice(0, -1).every((r) => r.line === "solid"), "fact rows are not split by hairlines: " + JSON.stringify(facts.rows));
+});
+
+await step("ad preview (video): the video plays inside the feed ad with its copy; a video without copy shows the note", async () => {
+  await detailOf(VID(V1), "La cama pegada al piso");
+  let m = await mock();
+  expect(m && m.video, "no video inside the ad preview: " + JSON.stringify(m));
+  expect(m.text === "Mi cama estaba pegada al piso y lo arreglé en 5 minutos." && m.headline === "Patas de madera para cama" && m.desc === "Envío gratis" && m.cta === "Comprar",
+    "video ad text: " + JSON.stringify(m));
+  expect(JSON.stringify(m.modes) === JSON.stringify(["Feed=true", "Stories=false"]), "video preview modes: " + JSON.stringify(m.modes));
+  await modo("Stories");
+  m = await mock();
+  expect(m.stories && m.video && m.cta === "Comprar", "video stories preview: " + JSON.stringify(m));
+  await toMock();
+  await page.shot("04g-anuncio-video");
+  await detailOf(VID(V2), "Video descartado de prueba");
+  m = await mock();
+  expect(m && m.note === "Todavía no tiene texto del anuncio" && m.cta === null && m.text === null, "video without copy: " + JSON.stringify(m));
 });
 
 await step("reopen in multi-select: the bar button reopens the discarded ones and says so for the rest", async () => {
