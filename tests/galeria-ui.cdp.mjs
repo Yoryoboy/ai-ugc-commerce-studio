@@ -208,6 +208,34 @@ await step("header: the used-credits tile shows the server's creditsUsed (actors
   await page.shot("01-inicio");
 });
 
+await step("design system: header controls share 32px and one row, status pills differ by shape with no fill, Geist is embedded", async () => {
+  await page.hash("#/acme/MLA1/creativos");
+  await page.waitFor(`document.querySelectorAll(".item").length === 5`, "the creatives of the product");
+  const ctl = await page.eval(`["cliente-sel", "buscar"].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return { h: r.height, top: r.top }; })`);
+  expect(ctl[0].h === 32 && ctl[1].h === 32, "header select / search heights: " + JSON.stringify(ctl));
+  expect(ctl[0].top === ctl[1].top, "header select and search do not share one row: " + JSON.stringify(ctl));
+  const pills = await page.eval(`["draft", "approved", "discarded"].map((s) => {
+    const p = document.querySelector(".item .pill.st-" + s);
+    if (!p) return null;
+    const b = getComputedStyle(p, "::before");
+    const own = getComputedStyle(p);
+    return { s, shape: [b.width, b.height, b.borderTopLeftRadius, b.transform, b.clipPath, b.borderTopWidth, b.borderTopStyle, b.backgroundColor === "rgba(0, 0, 0, 0)" ? "hollow" : "filled"].join("|"),
+      fill: own.backgroundColor + " " + own.backgroundImage };
+  })`);
+  expect(pills.every(Boolean), "missing status pills: " + JSON.stringify(pills));
+  expect(new Set(pills.map((p) => p.shape)).size === 3, "draft / approved / discarded share a dot shape: " + JSON.stringify(pills.map((p) => p.shape)));
+  for (const p of pills) expect(p.fill === "rgba(0, 0, 0, 0) none", `status ${p.s} has a background fill: ${p.fill}`);
+  const tagRow = await page.eval(`(() => { const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector(".tag.type") && x.querySelector(".pill")); return c ? [c.querySelector(".pill").getBoundingClientRect().height, c.querySelector(".tag.type").getBoundingClientRect().height] : null; })()`);
+  expect(tagRow && tagRow[0] === tagRow[1], "type tag and status pill heights: " + JSON.stringify(tagRow));
+  const font = await page.eval(`document.fonts.load("13px Geist").then(() => document.fonts.ready).then(() => ({
+    check: document.fonts.check("13px Geist"),
+    loaded: [...document.fonts].some((f) => f.family.replace(/["']/g, "") === "Geist" && f.status === "loaded"),
+    body: getComputedStyle(document.body).fontFamily }))`);
+  expect(font.check && font.loaded, "Geist is not embedded and loaded: " + JSON.stringify(font));
+  expect(/^"?Geist"?,/.test(font.body), "body font stack does not start with Geist: " + font.body);
+  await page.shot("01b-design-system");
+});
+
 await step("cards and search results show the product and client names, creative type and pieces", async () => {
   await page.hash("#/buscar?tipo=creativo");
   await page.waitFor(`document.querySelectorAll(".item").length >= 3`, "search results");
