@@ -123,6 +123,8 @@ function video(rel, color) {
   tareas.push(async () => { if (await videosBase.get(base)) fs.copyFileSync(base, f); else fs.writeFileSync(f, "mock video"); });
 }
 
+// A title as a sentence: a period only when it does not already end in one, ? or ! ("¿Aguanta?", not "¿Aguanta?.").
+const oracion = (t) => (/[.!?…]$/.test(t) ? t : t + ".");
 const tono = (hex, k) => "#" + [1, 3, 5].map((i) => Math.max(0, Math.min(255, Math.round(parseInt(hex.slice(i, i + 2), 16) * k)))).map((n) => n.toString(16).padStart(2, "0")).join("");
 const TAM = { "4x5": "540x675", "9x16": "405x720", tarjeta: "540x675", producto: "600x600", retrato: "512x640", escena: "270x480", thumb: "270x480" };
 
@@ -194,7 +196,7 @@ function generar() {
             concept: { angle, awareness, visual: uno(VISUALES), why: `Es el único del lote que usa ${angle.toLowerCase()} con este visual` },
             actorId, textMode, layout: textMode === "template" ? (carrusel ? "tarjeta" : uno(LAYOUTS.slice(0, 4))) : null, slots,
             copy: {
-              primaryText: rnd() < 0.15 ? `${titulo}. ${title}: lo armás en minutos, queda firme y combina con lo que ya tenés en casa. Envío a todo el país.`.slice(0, 125) : `${titulo}. ${title}, listo para usar.`,
+              primaryText: rnd() < 0.15 ? `${oracion(titulo)} ${title}: lo armás en minutos, queda firme y combina con lo que ya tenés en casa. Envío a todo el país.`.slice(0, 125) : `${oracion(titulo)} ${title}, listo para usar.`,
               headline: title.slice(0, 40), description: rnd() < 0.6 ? "Envío gratis" : undefined, cta: uno(CTAS),
             },
             adName: `${productId}_${slug(angle).replace(/-/g, "")}_${actorId ? actorId.replace(/-v\d+$/, "") : "producto"}_${carrusel ? "carrusel" : "estatica"}`,

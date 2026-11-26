@@ -80,7 +80,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .searchbox { flex: 1 1 240px; min-width: 0; display: flex; }
 .searchbox input { width: 100%; }
 .top-actions { margin-left: auto; }
-.top-actions .btn { height: 32px; padding: 0 12px; font-size: 13px; }
+/* .sm included: the export button is a .btn.sm elsewhere, here it matches the select and the search. */
+.top-actions .btn, .top-actions .btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
 .meter { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
 .tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 12px 16px; display: grid; gap: 2px; min-width: 0; }
 .tile.primary { background: var(--accent-soft); border-color: var(--accent-soft); }
@@ -150,6 +151,14 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .card:hover, .item:hover { border-color: var(--border-strong); }
 .item.selected, .item.selected:hover { border-color: var(--accent); background: var(--accent-soft); }
 .item.archived .media img { opacity: .6; }
+/* Small text on --accent-soft or --surface-3 uses --text-2: --text-3 is under 4.5:1 there in dark mode. */
+.item.selected, .row.selected, .tile.primary, .client .media { --text-3: var(--text-2); --idle: var(--text-2); }
+/* The keyboard ring of a card link goes on the card: the card clips its own content (overflow: hidden). */
+.cardlink:focus-visible { outline-offset: -2px; }
+@supports selector(:has(a)) {
+  .item:has(> .cardlink:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .item > .cardlink:focus-visible { outline: none; }
+}
 .cardlink { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; color: inherit; }
 .cardlink:hover { text-decoration: none; }
 .media { aspect-ratio: 9 / 16; background: var(--surface-2); display: grid; place-items: center; position: relative; overflow: hidden; }
@@ -232,54 +241,97 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .olds a:hover { color: var(--text); text-decoration: none; }
 .olds img { width: 48px; height: 48px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--surface-2); }
 .cols { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
-.cols.ad { gap: 24px; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); }
+.cols.ad { gap: 24px; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); }
 @media (max-width: 760px) { .cols, .cols.ad { grid-template-columns: minmax(0, 1fr); } }
 /* Copy rows: the Copiar button sits on the first line (label) of every row, whatever the text length. */
 .copyrow { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; }
 .copyrow .btn { margin-top: -4px; }
 .copyrow p { overflow-wrap: anywhere; }
 
-/* Ad preview: an original sketch of where a feed ad (or a story) puts the client, the text, the
-   piece, the headline and the button. Not Meta's interface: no logos of theirs, the studio's tokens. */
+/* Ad preview: the piece as it will look in the real placements (Facebook feed, Instagram feed,
+   Instagram stories), drawn with each platform's own palette and a system font, light or dark on its
+   own switch, independent of the gallery theme, so the piece's colours are judged against what will
+   surround them. The --am-* hex values are those platform colours: the one allowed exception to the
+   tokens-only rule, scoped to the preview. Icons are simple strokes drawn here; no app logo or wordmark. */
 .admock-wrap { display: grid; gap: 10px; min-width: 0; justify-items: start; }
-.admock-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-height: 24px; width: 100%; max-width: 380px; }
-.admock-bar .label { margin-right: auto; }
-.admock-modes { display: inline-flex; gap: 6px; }
-.admock { position: relative; width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; display: flex; flex-direction: column; }
-.am-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; min-width: 0; }
-.am-avatar { flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; overflow: hidden; background: var(--surface-3); border: 1px solid var(--border); color: var(--text-2); font-weight: 600; }
+.admock-bar { display: grid; gap: 8px; width: 100%; max-width: 400px; }
+.admock-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 24px; }
+.admock-row .label { margin-right: auto; }
+.admock-modes, .admock-themes { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.admock-stage {
+  --am-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --am-page: #f0f2f5; --am-bg: #ffffff; --am-bar: #f0f2f5; --am-text: #050505; --am-text-2: #65676b; --am-line: #ced0d4; --am-btn: #e4e6eb;
+  --am-story: #000000; --am-on-story: #ffffff; --am-shade: rgba(0, 0, 0, .45); --am-track: rgba(255, 255, 255, .35);
+  --am-ring-1: #feda75; --am-ring-2: #d62976; --am-ring-3: #4f5bd5;
+  color-scheme: light; width: 100%; max-width: 400px; padding: 12px; background: var(--am-page); border: 1px solid var(--border); border-radius: var(--r-lg);
+}
+.admock-stage.ig { --am-page: #ffffff; --am-bg: #ffffff; --am-text: #000000; --am-text-2: #737373; --am-line: #dbdbdb; --am-btn: #efefef; }
+.admock-stage.dark { color-scheme: dark; --am-page: #18191a; --am-bg: #242526; --am-bar: #3a3b3c; --am-text: #e4e6eb; --am-text-2: #b0b3b8; --am-line: #3e4042; --am-btn: #4e4f50; }
+.admock-stage.ig.dark { --am-page: #000000; --am-bg: #000000; --am-text: #f5f5f5; --am-text-2: #a8a8a8; --am-line: #262626; --am-btn: #262626; }
+.admock { position: relative; width: 100%; font-family: var(--am-font); font-size: 15px; line-height: 20px; background: var(--am-bg); color: var(--am-text); border-radius: var(--r-lg); overflow: hidden; display: flex; flex-direction: column; }
+.admock.ig { font-size: 14px; line-height: 18px; border-radius: 0; }
+.am-icon { flex: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.am-icon.am-menu { margin-left: auto; color: var(--am-text-2); stroke-width: 3.2; }
+.am-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; min-width: 0; }
+.am-avatar { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; overflow: hidden; background: var(--am-btn); color: var(--am-text-2); font-size: 16px; font-weight: 600; }
 .am-avatar.logo { background: #ffffff; }
 .am-avatar img { width: 100%; height: 100%; padding: 3px; object-fit: contain; display: block; }
 .am-who { display: grid; min-width: 0; }
 .am-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.am-sub { font-size: 12px; line-height: 16px; color: var(--text-3); }
-.am-text, .am-note { padding: 0 12px 10px; white-space: pre-line; overflow-wrap: anywhere; }
-.am-note { font-size: 12px; line-height: 18px; color: var(--text-3); }
-.am-more { padding: 0; border: 0; background: none; color: var(--text-2); font-weight: 500; cursor: pointer; }
-.am-more:hover { color: var(--text); text-decoration: underline; }
-.am-media { position: relative; aspect-ratio: 4 / 5; overflow: hidden; background: var(--surface-2); }
+.am-meta { display: flex; align-items: center; gap: 4px; font-size: 13px; line-height: 16px; color: var(--am-text-2); }
+.am-meta .am-icon { width: 12px; height: 12px; stroke-width: 2; }
+.am-text { margin: 0; padding: 0 16px 12px; white-space: pre-line; overflow-wrap: anywhere; }
+.am-note { margin: 0; padding: 0 16px 12px; font-size: 13px; line-height: 18px; color: var(--am-text-2); }
+.am-more { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.am-more:hover { text-decoration: underline; }
+.am-media { position: relative; aspect-ratio: 4 / 5; overflow: hidden; background: var(--am-btn); }
 .am-media.r1x1 { aspect-ratio: 1 / 1; }
 .am-media > img, .am-media > video { width: 100%; height: 100%; object-fit: cover; display: block; }
-.am-media > .placeholder, .am-card .placeholder { height: 100%; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--text-3); font-size: 12px; }
-.am-media.strip { aspect-ratio: auto; display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 12px 10px; background: none; }
-.am-card { flex: 0 0 78%; aspect-ratio: 4 / 5; scroll-snap-align: center; border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; background: var(--surface-2); }
+.am-media > .placeholder, .am-card .placeholder { height: 100%; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--am-text-2); font-size: 12px; }
+.am-media.strip { aspect-ratio: auto; display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 16px 12px; background: none; }
+.am-card { flex: 0 0 78%; aspect-ratio: 4 / 5; scroll-snap-align: center; border: 1px solid var(--am-line); border-radius: var(--r-lg); overflow: hidden; background: var(--am-btn); }
 .am-card img { width: 100%; height: 100%; object-fit: contain; display: block; }
-.am-foot { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--surface-2); border-top: 1px solid var(--border); }
-.am-media.strip + .am-foot { border-top: 0; }
+/* Facebook feed: link bar (domain, headline, description, grey button) and the reactions row. */
+.am-foot { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--am-bar); }
 .am-foot-text { flex: 1 1 auto; display: grid; min-width: 0; }
-.am-headline { font-weight: 600; overflow-wrap: anywhere; }
-.am-desc { font-size: 12px; line-height: 18px; color: var(--text-2); overflow-wrap: anywhere; }
-.am-cta { flex: none; margin-left: auto; height: 30px; display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: var(--r); background: var(--surface-3); color: var(--text); font-weight: 500; white-space: nowrap; }
-/* Stories: the 9:16 fills the frame; the client and the button float over it. The bottom offset keeps
-   the button clear of a video's controls. Optional bands show what the app covers (top 14%, bottom 35%). */
-.admock.stories { aspect-ratio: 9 / 16; }
-.admock.stories .am-media { position: absolute; inset: 0; aspect-ratio: auto; }
-.admock.stories .am-head { position: absolute; z-index: 2; top: 10px; left: 10px; max-width: calc(100% - 20px); padding: 4px 12px 4px 4px; background: var(--surface); border-radius: var(--r-full); }
-.admock.stories .am-text { display: none; }
-.admock.stories .am-note { position: absolute; z-index: 2; left: 10px; right: 10px; bottom: 56px; padding: 6px 10px; text-align: center; background: var(--surface); border-radius: var(--r); }
-.admock.stories .am-foot { position: absolute; z-index: 2; left: 10px; right: 10px; bottom: 56px; justify-content: center; padding: 0; background: none; border: 0; }
-.admock.stories .am-foot-text { display: none; }
-.admock.stories .am-cta { margin: 0; border-radius: var(--r-full); background: var(--surface); }
+.am-domain { font-size: 12px; line-height: 16px; color: var(--am-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am-headline { font-size: 16px; line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }
+.am-desc { font-size: 14px; line-height: 18px; color: var(--am-text-2); overflow-wrap: anywhere; }
+.am-cta { flex: none; margin-left: auto; height: 36px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 6px; background: var(--am-btn); color: var(--am-text); font-size: 15px; font-weight: 600; white-space: nowrap; }
+.am-social { display: flex; margin: 4px 16px 0; padding: 4px 0; border-top: 1px solid var(--am-line); }
+.am-act { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; color: var(--am-text-2); font-size: 14px; font-weight: 600; white-space: nowrap; }
+/* Instagram feed: ring avatar and handle, the CTA strip under the media, action icons, the caption. */
+.admock.ig .am-head { gap: 10px; padding: 10px 12px; }
+.am-ring { flex: none; display: grid; padding: 2px; border-radius: 50%; background: linear-gradient(45deg, var(--am-ring-1), var(--am-ring-2), var(--am-ring-3)); }
+.am-ring .am-avatar { width: 32px; height: 32px; font-size: 13px; border: 2px solid var(--am-bg); }
+.admock.ig .am-name { font-size: 14px; line-height: 18px; }
+.admock.ig .am-meta { font-size: 12px; }
+.am-strip { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 44px; padding: 0 12px; border-bottom: 1px solid var(--am-line); font-weight: 600; }
+.am-strip .am-cta { height: auto; padding: 0; margin: 0; background: none; border-radius: 0; font-size: 14px; }
+.am-actions { display: flex; align-items: center; gap: 16px; padding: 10px 12px 8px; }
+.am-actions .am-icon { width: 24px; height: 24px; }
+.am-actions .am-save { margin-left: auto; }
+.am-caption { margin: 0; padding: 0 12px 12px; white-space: pre-line; overflow-wrap: anywhere; }
+.am-caption .am-handle { font-weight: 600; }
+.am-caption .am-text { padding: 0; }
+.admock.ig .am-more { color: var(--am-text-2); font-weight: 400; }
+.admock.ig .am-note { padding: 0 12px 12px; }
+.admock.ig .am-media.strip { gap: 0; padding: 0; }
+.admock.ig .am-card { flex-basis: 100%; border: 0; border-radius: 0; }
+/* Instagram stories: the 9:16 fills the frame under a progress bar, the account and a bottom button.
+   The button sits clear of a video's controls. Optional bands show what the app covers (top 14%, bottom 35%). */
+.admock.stories { aspect-ratio: 9 / 16; background: var(--am-story); color: var(--am-on-story); font-size: 14px; line-height: 18px; }
+.admock.stories .am-media { position: absolute; inset: 0; aspect-ratio: auto; background: var(--am-story); }
+.am-shade { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(var(--am-shade), transparent 20%, transparent 70%, var(--am-shade)); }
+.am-progress { position: absolute; z-index: 2; top: 8px; left: 8px; right: 8px; height: 2px; border-radius: 1px; overflow: hidden; background: var(--am-track); }
+.am-progress span { display: block; width: 35%; height: 100%; background: var(--am-on-story); }
+.admock.stories .am-head { position: absolute; z-index: 2; top: 18px; left: 0; right: 0; padding: 0 12px; }
+.admock.stories .am-name { font-size: 14px; }
+.admock.stories .am-meta, .admock.stories .am-menu { color: var(--am-on-story); }
+.admock.stories .am-avatar { width: 32px; height: 32px; font-size: 13px; }
+.am-swipe { position: absolute; z-index: 2; left: 12px; right: 12px; bottom: 56px; display: grid; justify-items: center; gap: 2px; }
+.admock.stories .am-cta { margin: 0; padding: 0 18px; border-radius: var(--r-full); background: var(--am-on-story); color: var(--am-story); font-size: 14px; }
+.admock.stories .am-note { position: absolute; z-index: 2; left: 12px; right: 12px; bottom: 56px; padding: 6px 10px; text-align: center; background: var(--am-shade); color: var(--am-on-story); border-radius: var(--r); }
 .am-zones { display: none; }
 .admock.stories.zones .am-zones { display: block; position: absolute; inset: 0; z-index: 1; pointer-events: none; }
 .am-zone { position: absolute; left: 0; right: 0; display: grid; justify-items: center; align-items: end; padding: 6px; background: color-mix(in srgb, var(--warn) 22%, transparent); }
@@ -1315,7 +1367,8 @@ const grid = (items, opts) => h("div", { class: "grid" + (opts && opts.showKind 
 // Hovering a creative card with a mouse (after QV_DELAY ms) or reaching its link with the keyboard
 // shows the current piece of every slot (4:5, 9:16, carousel cards 1…N) in #vista-rapida, beside the
 // card, without leaving the list. A touch tap is not a hover: it opens the detail as before. Leaving
-// the card, Escape, moving the focus away, scrolling or a new view close it. The pieces come from the
+// the card, Escape, moving the focus away, scrolling (unless the card has the keyboard focus) or a
+// new view close it. The pieces come from the
 // same GET /api/elemento the detail view reads (the list only knows the cover), once per version.
 const QV_DELAY = 300;
 const qv = { link: null, item: null, timer: null, open: false, cache: new Map() };
@@ -1406,7 +1459,15 @@ function placeQuickView() {
 }
 
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && (qv.open || qv.timer)) closeQuickView(); });
-window.addEventListener("scroll", () => closeQuickView(), { passive: true, capture: true });
+// Scrolling closes it, except while its card has the keyboard focus: Tab onto a card partly off-screen
+// scrolls it into view, and the quick view follows the card until the card leaves the viewport.
+window.addEventListener("scroll", () => {
+  const link = qv.link;
+  if (!link || document.activeElement !== link) { closeQuickView(); return; }
+  const r = (link.closest(".item") || link).getBoundingClientRect();
+  if (r.bottom <= 0 || r.top >= document.documentElement.clientHeight) closeQuickView();
+  else placeQuickView();
+}, { passive: true, capture: true });
 window.addEventListener("resize", () => closeQuickView());
 
 // ---------- paginated lists ----------
@@ -1947,6 +2008,7 @@ async function creativeDetail(e, after, my) {
   const name = e.title;
   const isCarousel = j.type === "carousel";
   const brand = await loadBrand(e.profileId);
+  const domain = await loadDomain(e);
   const piece = (p) => {
     const ratio = /^\d+x\d+$/.test(p.slot) ? " r" + p.slot : /^tarjeta-\d+$/.test(p.slot) ? " tarjeta" : "";
     return h("figure", { class: "piece" + ratio },
@@ -1967,7 +2029,7 @@ async function creativeDetail(e, after, my) {
   const storyPiece = isCarousel ? null : slot("9x16");
   const shotOf = (p) => (p ? picture(p.current.src, 960, name + " · " + p.label) : h("div", { class: "placeholder" }, "Sin imagen todavía"));
   const mock = adMock({
-    copy: j.copy, client: e.clientName || clientName(e.profileId), logo: brandLogo(brand), stories: !!storyPiece,
+    copy: j.copy, client: e.clientName || clientName(e.profileId), logo: brandLogo(brand), domain, stories: !!storyPiece,
     media: isCarousel
       ? h("div", { class: "am-media strip", role: "group", tabindex: "0", "aria-label": "Tarjetas del carrusel" }, pieces.map((p) => h("div", { class: "am-card" }, shotOf(p.current ? p : null))))
       : h("div", { class: "am-media" + (feedPiece && feedPiece.slot === "1x1" ? " r1x1" : "") }),
@@ -1996,63 +2058,146 @@ async function creativeDetail(e, after, my) {
         brand ? brandBlock(brand) : null)));
 }
 
-// Meta cuts the primary text of a feed ad near 125 characters and offers «Ver más».
+// Meta cuts the primary text of a feed ad near 125 characters and offers «Ver más» (Facebook) or
+// «más» (Instagram, after the handle, so the text is a <span> there).
 const AD_TEXT_MAX = 125;
-function adText(text) {
-  const p = h("p", { class: "am-text", tabindex: "-1" });
+function adText(text, more, tag) {
+  const p = h(tag || "p", { class: "am-text", tabindex: "-1" });
   if (text.length <= AD_TEXT_MAX) { p.append(text); return p; }
   const cut = text.slice(0, AD_TEXT_MAX);
   const space = cut.lastIndexOf(" ");
   const short = (space > AD_TEXT_MAX * 0.6 ? cut.slice(0, space) : cut).replace(/[\s.,;:]+$/, "");
-  p.append(short + "… ", h("button", { class: "am-more", type: "button", onclick: () => { p.replaceChildren(text); p.focus(); } }, "Ver más"));
+  p.append(short + "… ", h("button", { class: "am-more", type: "button", onclick: () => { p.replaceChildren(text); p.focus(); } }, more));
   return p;
 }
 
-// Preview of a piece as a feed ad: the client (logo from marca or its initial), "Publicidad", the
-// primary text, the piece and a bottom bar with headline, description and the button. With a 9:16
-// (`stories`) it toggles to a story, where bands can show what the app covers. Without `copy` it
-// shows the piece and a neutral note, never invented text. `fill(media, modo)` draws the piece of
-// each mode into `media`; a video passes its own stage and no `fill`.
+// Instagram handle from the client's name: "Beta Hogar" -> "betahogar" (accents, spaces and signs dropped).
+const igHandle = (name) => String(name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9._]/g, "");
+
+// Icons of the ad preview: plain strokes on a 24px grid, drawn for this page (no app logo).
+const AM_ICONS = {
+  dots: ["M5 12h.01", "M12 12h.01", "M19 12h.01"],
+  globe: ["M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z", "M3 12h18", "M12 3c2.5 2.5 3.8 5.5 3.8 9s-1.3 6.5-3.8 9c-2.5-2.5-3.8-5.5-3.8-9S9.5 5.5 12 3z"],
+  like: ["M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z", "M7 11l4-7a2 2 0 0 1 2.6 2.3L13 10h5.5a2 2 0 0 1 2 2.4l-1.3 6A2 2 0 0 1 17.2 20H7"],
+  comment: ["M12 4c4.7 0 8.5 3.3 8.5 7.5S16.7 19 12 19c-1.1 0-2.2-.2-3.2-.5L4 20l1.3-3.7C4.2 15 3.5 13.3 3.5 11.5 3.5 7.3 7.3 4 12 4z"],
+  share: ["M14 5l7 6.5-7 6.5", "M21 11.5h-9c-4.4 0-8 3.1-8 7.5"],
+  heart: ["M12 20.5s-8-4.9-8-10.6C4 7 6 5 8.6 5c1.5 0 2.7.7 3.4 1.9C12.7 5.7 13.9 5 15.4 5 18 5 20 7 20 9.9c0 5.7-8 10.6-8 10.6z"],
+  bubble: ["M20.5 12a8.5 8.5 0 1 0-3.7 7l3.7 1.2-1-3.7a8.4 8.4 0 0 0 1-4.5z"],
+  send: ["M21.5 3L10 13.5", "M21.5 3l-6.8 18-4.7-7.5L3 9.4z"],
+  save: ["M18.5 20.5L12 15.5l-6.5 5v-16a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1z"],
+  right: ["M9 6l6 6-6 6"],
+  up: ["M6 15l6-6 6 6"],
+};
+function amIcon(name, cls) {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("class", "am-icon" + (cls ? " " + cls : ""));
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  for (const d of AM_ICONS[name]) { const p = document.createElementNS(NS, "path"); p.setAttribute("d", d); svg.append(p); }
+  return svg;
+}
+
+// Domain of the product page (without www.) for the Facebook link bar; null when the product has no URL.
+async function loadDomain(e) {
+  if (!e.profileId || !e.productId) return null;
+  let p;
+  try { p = await api("/api/elemento?" + qs({ ruta: "clientes/" + e.profileId + "/" + e.productId })); } catch (err) {
+    if (err.status === 0 || err.status === 401) throw err;
+    return null;
+  }
+  const u = safeUrl(p && p.json && typeof p.json === "object" ? p.json.url : null);
+  try { return u ? new URL(u).hostname.replace(/^www\./, "") : null; } catch (err) { return null; }
+}
+
+// Preview of a piece in the real placements: Facebook Feed, Instagram Feed and, with a 9:16
+// (`stories`), Instagram Stories, each with that app's layout and colours (light or dark on the
+// preview's own switch). The client is its logo (marca) or initial, its name on Facebook and a
+// handle made from the name on Instagram. Without `copy` it shows the piece and a neutral note, never
+// invented text or a button. `fill(media, modo)` draws the piece of each format ("feed" or
+// "stories") into `media`; a video passes its own stage and no `fill`. `domain` (the product page)
+// goes on the Facebook link bar when there is one. Only the switches and «Ver más» / «más» are buttons.
+const AD_PLACES = { fb: "Facebook Feed", ig: "Instagram Feed", stories: "Instagram Stories" };
 function adMock(o) {
   const cp = o.copy && typeof o.copy === "object" ? o.copy : {};
   const str = (v) => (typeof v === "string" && v.trim() ? v : null);
   const [primary, headline, description, cta] = [cp.primaryText, cp.headline, cp.description, cp.cta].map(str);
+  const hasCopy = !!(primary || headline || description || cta);
   const client = o.client || "";
-  const avatar = o.logo
+  const handle = igHandle(client) || client;
+  const avatar = () => (o.logo
     ? h("span", { class: "am-avatar logo" }, h("img", { src: url(o.logo), alt: "" }))
-    : h("span", { class: "am-avatar", "aria-hidden": "true" }, client.trim().charAt(0).toUpperCase() || "?");
-  const frame = h("article", { class: "admock" },
-    h("div", { class: "am-head" }, avatar, h("div", { class: "am-who" }, h("span", { class: "am-name" }, client), h("span", { class: "am-sub" }, "Publicidad"))),
-    primary || headline || description || cta ? (primary ? adText(primary) : null) : h("p", { class: "am-note" }, "Todavía no tiene texto del anuncio"),
-    o.media,
-    headline || description || cta ? h("div", { class: "am-foot" },
-      headline || description ? h("div", { class: "am-foot-text" },
-        headline ? h("span", { class: "am-headline" }, headline) : null,
-        description ? h("span", { class: "am-desc" }, description) : null) : null,
-      cta ? h("span", { class: "am-cta" }, cta) : null) : null,
-    o.stories ? h("div", { class: "am-zones", "aria-hidden": "true" },
-      h("div", { class: "am-zone top" }, h("span", {}, "Lo tapa la app")),
-      h("div", { class: "am-zone bottom" }, h("span", {}, "Lo tapa la app"))) : null);
-  const bar = h("div", { class: "admock-bar" }, h("span", { class: "label" }, "Vista previa del anuncio"));
-  let modo = "feed";
-  let zones = null;
-  const paint = () => {
-    frame.classList.toggle("stories", modo === "stories");
-    frame.setAttribute("aria-label", "Vista previa del anuncio " + (modo === "stories" ? "en historias" : "en el feed"));
-    for (const b of bar.querySelectorAll("[data-modo]")) b.setAttribute("aria-pressed", String(b.dataset.modo === modo));
-    if (zones) zones.hidden = modo !== "stories";
-    if (o.fill) o.fill(o.media, modo);
+    : h("span", { class: "am-avatar", "aria-hidden": "true" }, client.trim().charAt(0).toUpperCase() || "?"));
+  const note = () => h("p", { class: "am-note" }, "Todavía no tiene texto del anuncio");
+  const meta = (globe) => h("span", { class: "am-meta" }, h("span", { class: "am-sub" }, "Publicidad"), globe ? [h("span", { "aria-hidden": "true" }, "·"), amIcon("globe")] : null);
+  const igHead = () => h("div", { class: "am-head" }, h("span", { class: "am-ring" }, avatar()),
+    h("div", { class: "am-who" }, h("span", { class: "am-name" }, handle), meta(false)), amIcon("dots", "am-menu"));
+  const zoneLayer = o.stories ? h("div", { class: "am-zones", "aria-hidden": "true" },
+    h("div", { class: "am-zone top" }, h("span", {}, "Lo tapa la app")),
+    h("div", { class: "am-zone bottom" }, h("span", {}, "Lo tapa la app"))) : null;
+  const views = {
+    fb: () => [
+      h("div", { class: "am-head" }, avatar(), h("div", { class: "am-who" }, h("span", { class: "am-name" }, client), meta(true)), amIcon("dots", "am-menu")),
+      hasCopy ? (primary ? adText(primary, "Ver más") : null) : note(),
+      o.media,
+      headline || description || cta ? h("div", { class: "am-foot" },
+        h("div", { class: "am-foot-text" },
+          o.domain ? h("span", { class: "am-domain" }, o.domain.toUpperCase()) : null,
+          headline ? h("span", { class: "am-headline" }, headline) : null,
+          description ? h("span", { class: "am-desc" }, description) : null),
+        cta ? h("span", { class: "am-cta" }, cta) : null) : null,
+      h("div", { class: "am-social" }, [["like", "Me gusta"], ["comment", "Comentar"], ["share", "Compartir"]].map(([i, t]) => h("span", { class: "am-act" }, amIcon(i), t))),
+    ],
+    ig: () => [
+      igHead(),
+      o.media,
+      cta ? h("div", { class: "am-strip" }, h("span", { class: "am-cta" }, cta), amIcon("right")) : null,
+      h("div", { class: "am-actions" }, amIcon("heart"), amIcon("bubble"), amIcon("send"), amIcon("save", "am-save")),
+      primary ? h("p", { class: "am-caption" }, h("span", { class: "am-handle" }, handle), " ", adText(primary, "más", "span")) : hasCopy ? null : note(),
+    ],
+    stories: () => [
+      o.media,
+      h("div", { class: "am-shade", "aria-hidden": "true" }),
+      h("div", { class: "am-progress", "aria-hidden": "true" }, h("span")),
+      igHead(),
+      cta ? h("div", { class: "am-swipe" }, amIcon("up"), h("span", { class: "am-cta" }, cta)) : hasCopy ? null : note(),
+      zoneLayer,
+    ],
   };
-  if (o.stories) {
-    const pick = (m) => () => { if (modo !== m) { modo = m; paint(); } };
-    zones = h("button", { class: "chip", type: "button", "aria-pressed": "false", title: "Marca el 14% de arriba y el 35% de abajo, que tapa la app",
-      onclick: () => { const on = frame.classList.toggle("zones"); zones.setAttribute("aria-pressed", String(on)); } }, "Zonas tapadas");
-    bar.append(h("div", { class: "admock-modes", role: "group", "aria-label": "Formato de la vista previa" },
-      h("button", { class: "chip", type: "button", "data-modo": "feed", onclick: pick("feed") }, "Feed"),
-      h("button", { class: "chip", type: "button", "data-modo": "stories", onclick: pick("stories") }, "Stories")), zones);
-  }
-  paint();
-  return h("div", { class: "admock-wrap" }, bar, frame);
+  const frame = h("article", { class: "admock" });
+  const stage = h("div", { class: "admock-stage" }, frame);
+  let modo = "fb";
+  let tema = "light";
+  let zonesOn = false;
+  const chip = (attrs, text, onclick) => h("button", { class: "chip", type: "button", ...attrs, onclick }, text);
+  const modes = h("div", { class: "admock-modes", role: "group", "aria-label": "Ubicación del anuncio" },
+    Object.keys(AD_PLACES).filter((k) => k !== "stories" || o.stories).map((k) => chip({ "data-modo": k }, AD_PLACES[k], () => { if (modo !== k) { modo = k; place(); } })));
+  const themes = h("div", { class: "admock-themes", role: "group", "aria-label": "Tema de la vista previa" },
+    chip({ "data-tema": "light" }, "Claro", () => { tema = "light"; paint(); }),
+    chip({ "data-tema": "dark" }, "Oscuro", () => { tema = "dark"; paint(); }));
+  const zones = o.stories ? chip({ "aria-pressed": "false", title: "Marca el 14% de arriba y el 35% de abajo, que tapa la app" }, "Zonas tapadas",
+    () => { zonesOn = !zonesOn; paint(); }) : null;
+  const bar = h("div", { class: "admock-bar" },
+    h("div", { class: "admock-row" }, h("span", { class: "label" }, "Vista previa del anuncio"), themes),
+    h("div", { class: "admock-row" }, modes, zones));
+  // Colours and toggles only: the frame keeps its content (an open «Ver más», a playing video).
+  const paint = () => {
+    stage.className = "admock-stage " + (modo === "fb" ? "fb" : "ig") + (tema === "dark" ? " dark" : "");
+    frame.className = "admock " + modo + (modo === "stories" && zonesOn ? " zones" : "");
+    for (const b of modes.children) b.setAttribute("aria-pressed", String(b.dataset.modo === modo));
+    for (const b of themes.children) b.setAttribute("aria-pressed", String(b.dataset.tema === tema));
+    if (zones) { zones.hidden = modo !== "stories"; zones.setAttribute("aria-pressed", String(zonesOn)); }
+  };
+  // A new placement redraws the frame with that app's layout around the same piece.
+  const place = () => {
+    if (o.fill) o.fill(o.media, modo === "stories" ? "stories" : "feed");
+    fill(frame, views[modo]());
+    frame.setAttribute("aria-label", "Vista previa del anuncio en " + AD_PLACES[modo]);
+    paint();
+  };
+  place();
+  return h("div", { class: "admock-wrap" }, bar, stage);
 }
 
 // The Meta ad text (copy and adName) of a creative or video, one row per field with its Copiar
@@ -2071,6 +2216,7 @@ function adCopyGroup(j) {
 async function videoDetail(e, after) {
   const j = e.json && typeof e.json === "object" ? e.json : {};
   const brand = await loadBrand(e.profileId);
+  const domain = await loadDomain(e);
   const versions = e.versions || [];
   const scenes = e.scenes || [];
   const cur = e.current;
@@ -2088,8 +2234,8 @@ async function videoDetail(e, after) {
   if (sources.length) show(0);
   else stage.append(e.cover ? picture(e.cover, 960, "") : h("div", { class: "placeholder" }, "Todavía no hay video"));
   const vtitle = e.title;
-  // The player is the ad preview: the video plays inside the feed ad (4:5 crop) or the story (9:16).
-  const mock = adMock({ copy: j.copy, client: e.clientName || clientName(e.profileId), logo: brandLogo(brand), stories: true, media: stage });
+  // The player is the ad preview: the video plays inside the feed ads (4:5 crop) or the story (9:16).
+  const mock = adMock({ copy: j.copy, client: e.clientName || clientName(e.profileId), logo: brandLogo(brand), domain, stories: true, media: stage });
   return h("section", { class: "section" },
     h("div", { class: "detail" },
       h("div", { class: "player" }, mock, sources.length > 1 ? buttons : null),

@@ -94,7 +94,7 @@ png("clientes/beta/marca/logo.png", "#224488", "200x200");
 // Only the ad preview step uses it: an ad text longer than the feed shows (it is cut with «Ver más»).
 const AD = "clientes/beta/MLB4/creativos/2026-11-19-x-anuncio";
 const AD_TEXT = "Tu dormitorio merece una luz cálida que no encandile. Este velador tiene tres intensidades, base de madera maciza y una pantalla de lino que suaviza todo.";
-json("clientes/beta/MLB4/producto.json", { profileId: "beta", productId: "MLB4", title: "Velador de noche" });
+json("clientes/beta/MLB4/producto.json", { profileId: "beta", productId: "MLB4", title: "Velador de noche", url: "https://www.betahogar.com.ar/velador-de-noche" });
 json(`${AD}/creativo.json`, { id: "2026-11-19-x-anuncio", title: "Luz que no encandila", type: "static", status: "draft", batch: "2026-11-19-velador", slots: ["4x5", "9x16"],
   concept: { angle: "Deseo" }, updatedAt: "2026-11-19T12:00:00Z",
   copy: { primaryText: AD_TEXT, headline: "Velador de noche", description: "Envío gratis a todo el país", cta: "Más información" } });
@@ -247,6 +247,9 @@ await step("design system: header controls share 32px and one row, status pills 
   const ctl = await page.eval(`["cliente-sel", "buscar"].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return { h: r.height, top: r.top }; })`);
   expect(ctl[0].h === 32 && ctl[1].h === 32, "header select / search heights: " + JSON.stringify(ctl));
   expect(ctl[0].top === ctl[1].top, "header select and search do not share one row: " + JSON.stringify(ctl));
+  const exp = await page.eval(`(() => { const b = document.querySelector("#export-todo .btn").getBoundingClientRect(); const s = document.getElementById("buscar").getBoundingClientRect();
+    return { h: b.height, mid: b.top + b.height / 2, search: s.top + s.height / 2 }; })()`);
+  expect(exp.h === 32 && Math.abs(exp.mid - exp.search) <= 0.5, "header export button is not 32px on the search box's middle: " + JSON.stringify(exp));
   const pills = await page.eval(`["draft", "approved", "discarded"].map((s) => {
     const p = document.querySelector(".item .pill.st-" + s);
     if (!p) return null;
@@ -304,6 +307,18 @@ await step("list cards: title and meta start at the same height across a row (2-
     const out = { bg: got.backgroundColor, border: got.borderTopColor, outline: got.outlineStyle, wantBg: want.backgroundColor, wantBorder: want.borderTopColor };
     probe.remove(); return out; })()`);
   expect(sel.bg === sel.wantBg && sel.border === sel.wantBorder, "selected card is not accent border + accent-soft fill: " + JSON.stringify(sel));
+  // Small text on --accent-soft reaches 4.5:1 in dark mode too (--text-2 there, --text-3 is 4.09:1).
+  await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
+  let ratio;
+  try {
+    ratio = await page.eval(`(() => {
+      const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector("h3").textContent === "Sin estado todavía");
+      const rgb = (s) => s.match(/[\\d.]+/g).slice(0, 3).map(Number);
+      const lum = (s) => { const [r, g, b] = rgb(s).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      const [a, b] = [lum(getComputedStyle(c.querySelector(".meta")).color), lum(getComputedStyle(c).backgroundColor)].sort((x, y) => y - x);
+      return Math.round((a + 0.05) / (b + 0.05) * 100) / 100; })()`);
+  } finally { await page.cdp("Emulation.setEmulatedMedia", { features: [] }); }
+  expect(ratio >= 4.5, "dark mode: meta text on the selected card is " + ratio + ":1");
   await page.shot("01d-tarjeta-seleccionada");
   await page.pick("Sin estado todavía");
   expect(await page.eval(`state.selection.size === 0`), "the card did not unselect");
@@ -397,6 +412,35 @@ await step("quick view: keyboard focus on the card link shows it, Escape and mov
   await sleep(500);
   expect(await page.eval(`document.getElementById("vista-rapida").hidden`), "the quick view stayed open after focus moved on");
   expect((await page.eval(`location.hash`)) === hash0, "keyboard focus changed the route");
+});
+
+await step("quick view: Tab onto a card that is partly off-screen scrolls it into view and the quick view still opens; the focused card shows its ring", async () => {
+  await page.hash(MLA1_LIST);
+  await page.waitFor(`document.querySelectorAll(".item").length === 5`, "the creatives of the product");
+  await page.mouse(1, 1);
+  await page.cdp("Emulation.setDeviceMetricsOverride", { width: 1280, height: 560, deviceScaleFactor: 1, mobile: false });
+  try {
+    await sleep(150);
+    const pre = await page.eval(`(() => { const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector("h3").textContent === "Agacharse ya no duele");
+      window.scrollBy(0, c.getBoundingClientRect().top - (innerHeight - 140));
+      c.querySelector(".pick input").focus({ preventScroll: true });
+      const r = c.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, vh: innerHeight, y: scrollY }; })()`);
+    expect(pre.top < pre.vh && pre.bottom > pre.vh, "the card is not partly off-screen: " + JSON.stringify(pre));
+    await sleep(150);
+    await page.key("Tab", 9);
+    expect(await page.eval(`!!document.activeElement.closest(".cardlink") && document.activeElement.closest(".item").querySelector("h3").textContent === "Agacharse ya no duele"`),
+      "Tab did not reach the card link");
+    await page.waitFor(`(() => { const p = document.getElementById("vista-rapida"); return !!p && !p.hidden && p.querySelectorAll("figure").length === 2; })()`, "the quick view after Tab scrolled the card into view");
+    expect((await page.eval(`scrollY`)) !== pre.y, "Tab did not scroll the card into view, so the case is not tested");
+    const v = await quickView(page);
+    expect(JSON.stringify(v.pieces) === JSON.stringify(DOLOR_PIECES) && v.inside, "quick view after the scroll: " + JSON.stringify(v));
+    const ring = await page.eval(`(() => { const c = document.activeElement.closest(".item"); const s = getComputedStyle(c); return { style: s.outlineStyle, width: s.outlineWidth, offset: s.outlineOffset }; })()`);
+    expect(ring.style === "solid" && parseFloat(ring.width) >= 2 && parseFloat(ring.offset) >= 0, "the focused card has no ring outside its clipped box: " + JSON.stringify(ring));
+    await qvSettled(page);
+    await page.shot("02d-vista-rapida-teclado-con-scroll");
+    await page.key("Escape", 27);
+    await page.waitFor(`document.getElementById("vista-rapida").hidden`, "Escape to close the quick view");
+  } finally { await page.cdp("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }); }
 });
 
 await step("quick view: a touch tap on a card opens the detail and never shows the quick view", async () => {
@@ -546,20 +590,20 @@ await step("ad preview: a creative with copy shows its text, headline and button
   expect(m.name === "Acme SRL" && m.sub === "Publicidad" && m.avatar === "text:A", "ad header (client, Publicidad, initial without a logo): " + JSON.stringify(m));
   expect(m.text === "Subí la cama 10 cm." && m.headline === "Patas de madera" && m.cta === "Comprar" && m.desc === null && m.note === null, "ad text: " + JSON.stringify(m));
   expect(!m.stories && m.img === srcOf(`${CR(ids.dolor)}/4x5-v2.png`), "feed preview shows " + m.img);
-  expect(JSON.stringify(m.modes) === JSON.stringify(["Feed=true", "Stories=false"]), "preview modes: " + JSON.stringify(m.modes));
+  expect(JSON.stringify(m.modes) === JSON.stringify(["Facebook Feed=true", "Instagram Feed=false", "Instagram Stories=false"]), "preview modes: " + JSON.stringify(m.modes));
   await toMock();
   await page.shot("04d-anuncio-feed");
-  await modo("Stories");
+  await modo("Instagram Stories");
   m = await mock();
   expect(m.stories && m.img === srcOf(`${CR(ids.dolor)}/9x16-v2.png`) && m.cta === "Comprar", "stories preview: " + JSON.stringify(m));
-  expect(JSON.stringify(m.modes) === JSON.stringify(["Feed=false", "Stories=true"]), "preview modes in stories: " + JSON.stringify(m.modes));
+  expect(JSON.stringify(m.modes) === JSON.stringify(["Facebook Feed=false", "Instagram Feed=false", "Instagram Stories=true"]), "preview modes in stories: " + JSON.stringify(m.modes));
   await modo("Zonas tapadas");
   const z = await page.eval(`(() => { const f = document.querySelector(".admock").getBoundingClientRect(); const [t, b] = [...document.querySelectorAll(".admock .am-zone")].map((e) => e.getBoundingClientRect());
     return { top: Math.abs(t.height - f.height * .14) <= 1.5 && Math.abs(t.top - f.top) <= 1.5, bottom: Math.abs(b.height - f.height * .35) <= 1.5 && Math.abs(b.bottom - f.bottom) <= 1.5, vis: [t.height, b.height, f.height] }; })()`);
   expect(z.top && z.bottom, "covered zones are not the top 14% and bottom 35% of the story: " + JSON.stringify(z.vis));
   await toMock();
   await page.shot("04e-anuncio-stories");
-  await modo("Feed");
+  await modo("Facebook Feed");
   m = await mock();
   expect(!m.stories && m.img === srcOf(`${CR(ids.dolor)}/4x5-v2.png`), "back to feed shows " + m.img);
 
@@ -567,7 +611,8 @@ await step("ad preview: a creative with copy shows its text, headline and button
   m = await mock();
   expect(m && m.note === "Todavía no tiene texto del anuncio", "no-copy note: " + JSON.stringify(m));
   expect(m.cta === null && m.text === null && m.headline === null && m.desc === null, "a creative without copy shows invented text or a button: " + JSON.stringify(m));
-  expect(m.img === srcOf(`${CR(ids.precio)}/4x5-v1.png`) && m.modes.length === 0, "without a 9:16 there is no Stories toggle and the 4:5 is shown: " + JSON.stringify(m));
+  expect(m.img === srcOf(`${CR(ids.precio)}/4x5-v1.png`) && JSON.stringify(m.modes) === JSON.stringify(["Facebook Feed=true", "Instagram Feed=false"]),
+    "without a 9:16 there is no Stories toggle and the 4:5 is shown: " + JSON.stringify(m));
 
   await detailOf(AD, "Luz que no encandila");
   m = await mock();
@@ -579,6 +624,73 @@ await step("ad preview: a creative with copy shows its text, headline and button
   expect((await mock()).text === AD_TEXT, "«Ver más» does not show the whole text");
   await toMock();
   await page.shot("04f-anuncio-texto-largo");
+});
+
+// What the preview shows in its current placement, as a person reads it.
+const placement = () => page.eval(`(() => { const m = document.querySelector(".admock"); if (!m) return null; const one = (q) => m.querySelector(q);
+  const pressed = (attr) => [...document.querySelectorAll(".admock-bar [" + attr + "]")].map((b) => b.textContent + "=" + b.getAttribute("aria-pressed"));
+  const strip = one(".am-strip"); const prog = one(".am-progress");
+  return { cls: m.className, text: m.innerText.replace(/\\s+/g, " "), name: one(".am-name") && one(".am-name").textContent, cta: one(".am-cta") && one(".am-cta").textContent,
+    img: (${SRC})(one(".am-media img")), strip: strip ? strip.innerText.trim() + "|svg:" + strip.querySelectorAll("svg").length : null,
+    progress: prog ? prog.getBoundingClientRect().height : 0, actions: m.querySelectorAll(".am-actions svg").length,
+    buttons: [...m.querySelectorAll("button")].map((b) => b.textContent), controls: m.querySelectorAll("a, input, select, textarea").length,
+    logos: [...document.querySelectorAll("img")].filter((i) => /facebook|instagram|meta/i.test((i.getAttribute("src") || "") + " " + (i.getAttribute("alt") || ""))).map((i) => i.getAttribute("src")),
+    modes: pressed("data-modo"), themes: pressed("data-tema"), bg: getComputedStyle(m).backgroundColor, body: getComputedStyle(document.body).backgroundColor }; })()`);
+const AD_SHORT = AD_TEXT.slice(0, 60);
+
+await step("ad preview (Meta placements): Facebook Feed, Instagram Feed and Instagram Stories reproduce each layout with the piece and the copy; a Claro / Oscuro switch recolors only the preview; no app logos", async () => {
+  await detailOf(CR(ids.precio), "Precio bajo, piso firme"); // a fresh draw of the next one (the previous step opened its «Ver más»)
+  await detailOf(AD, "Luz que no encandila");
+  let f = await placement();
+  expect(f, "no ad preview");
+  expect(JSON.stringify(f.modes) === JSON.stringify(["Facebook Feed=true", "Instagram Feed=false", "Instagram Stories=false"]), "placement switch: " + JSON.stringify(f.modes));
+  expect(JSON.stringify(f.themes) === JSON.stringify(["Claro=true", "Oscuro=false"]), "theme switch (light by default): " + JSON.stringify(f.themes));
+  // Facebook feed: page name, Publicidad, the text cut with Ver más, the 4:5, the link bar (domain, headline, description, button), the reactions row.
+  for (const part of ["Beta Hogar", "Publicidad", AD_SHORT, "Ver más", "BETAHOGAR.COM.AR", "Velador de noche", "Envío gratis a todo el país", "Más información", "Me gusta", "Comentar", "Compartir"]) has(f.text, part, "Facebook feed");
+  expect(/\bfb\b/.test(f.cls) && f.name === "Beta Hogar" && f.cta === "Más información" && f.img === srcOf(`${AD}/4x5-v1.png`), "Facebook feed: " + JSON.stringify(f));
+  expect(JSON.stringify(f.buttons) === JSON.stringify(["Ver más"]) && f.controls === 0, "only «Ver más» is interactive in the Facebook feed: " + JSON.stringify([f.buttons, f.controls]));
+  expect(f.logos.length === 0, "an image names an app logo: " + JSON.stringify(f.logos));
+  await toMock();
+  await page.shot("04h-meta-facebook-claro");
+  // Light / dark: the preview changes, the gallery does not.
+  await modo("Oscuro");
+  let d = await placement();
+  expect(JSON.stringify(d.themes) === JSON.stringify(["Claro=false", "Oscuro=true"]), "theme switch after Oscuro: " + JSON.stringify(d.themes));
+  expect(d.bg !== f.bg && d.body === f.body, "Oscuro must recolor the preview only: " + JSON.stringify({ light: [f.bg, f.body], dark: [d.bg, d.body] }));
+  await page.shot("04i-meta-facebook-oscuro");
+  await modo("Claro");
+  expect((await placement()).bg === f.bg, "Claro does not bring the light preview back");
+  // Instagram feed: the handle, the media, the CTA strip with a chevron, the action icons, the caption cut with «más».
+  await modo("Instagram Feed");
+  f = await placement();
+  expect(/\big\b/.test(f.cls) && f.name === "betahogar" && f.img === srcOf(`${AD}/4x5-v1.png`), "Instagram feed: " + JSON.stringify(f));
+  expect(f.strip === "Más información|svg:1" && f.cta === "Más información", "Instagram CTA strip: " + JSON.stringify(f.strip));
+  expect(f.actions === 4, "Instagram action icons (like, comment, send, save): " + f.actions);
+  has(f.text, "Publicidad", "Instagram feed");
+  has(f.text, "betahogar " + AD_SHORT, "Instagram caption");
+  expect(JSON.stringify(f.buttons) === JSON.stringify(["más"]) && f.controls === 0 && !f.text.includes("Me gusta"), "Instagram feed controls: " + JSON.stringify([f.buttons, f.controls]));
+  await toMock();
+  await page.shot("04j-meta-instagram-claro");
+  await modo("Oscuro");
+  d = await placement();
+  expect(d.bg !== f.bg && d.body === f.body, "Oscuro in the Instagram feed: " + JSON.stringify([f.bg, d.bg, f.body, d.body]));
+  await page.shot("04k-meta-instagram-oscuro");
+  // Instagram Stories: the 9:16 full frame, the progress bar, the handle, the button at the bottom.
+  await modo("Instagram Stories");
+  f = await placement();
+  expect(/\bstories\b/.test(f.cls) && f.img === srcOf(`${AD}/9x16-v1.png`) && f.progress > 0 && f.name === "betahogar" && f.cta === "Más información", "Instagram Stories: " + JSON.stringify(f));
+  has(f.text, "Publicidad", "Instagram Stories");
+  expect(f.buttons.length === 0 && f.controls === 0, "the story has controls: " + JSON.stringify(f.buttons));
+  await toMock();
+  await page.shot("04l-meta-stories-oscuro");
+  await modo("Claro");
+  await page.shot("04m-meta-stories-claro");
+  // Without copy: the note, never a button or a CTA strip.
+  await detailOf(CR(ids.dolor), "Agacharse ya no duele");
+  await detailOf(CR(ids.precio), "Precio bajo, piso firme");
+  await modo("Instagram Feed");
+  f = await placement();
+  expect(f.strip === null && f.cta === null && f.text.includes("Todavía no tiene texto del anuncio"), "Instagram feed without copy: " + JSON.stringify(f));
 });
 
 await step("detail: copy buttons sit on the first line of every row, facts are one hairline list without holes (12px --text-3 labels)", async () => {
@@ -604,8 +716,8 @@ await step("ad preview (video): the video plays inside the feed ad with its copy
   expect(m && m.video, "no video inside the ad preview: " + JSON.stringify(m));
   expect(m.text === "Mi cama estaba pegada al piso y lo arreglé en 5 minutos." && m.headline === "Patas de madera para cama" && m.desc === "Envío gratis" && m.cta === "Comprar",
     "video ad text: " + JSON.stringify(m));
-  expect(JSON.stringify(m.modes) === JSON.stringify(["Feed=true", "Stories=false"]), "video preview modes: " + JSON.stringify(m.modes));
-  await modo("Stories");
+  expect(JSON.stringify(m.modes) === JSON.stringify(["Facebook Feed=true", "Instagram Feed=false", "Instagram Stories=false"]), "video preview modes: " + JSON.stringify(m.modes));
+  await modo("Instagram Stories");
   m = await mock();
   expect(m.stories && m.video && m.cta === "Comprar", "video stories preview: " + JSON.stringify(m));
   await toMock();
