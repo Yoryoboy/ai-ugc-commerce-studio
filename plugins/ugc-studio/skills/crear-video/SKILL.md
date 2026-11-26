@@ -1,6 +1,6 @@
 ---
 name: crear-video
-description: Create a UGC video for a product with one of the studio's virtual actors — load the product sheet and allowed claims, recommend an actor, propose three ideas with script and cost, let the user choose drafts or direct final, draw a storyboard frame per shot, generate with Seedance 2.5 on Higgsfield, review, finalize and save it in the studio so it shows in the gallery. Use when the user wants a video, ad, reel or UGC for a product.
+description: Create a UGC video for a product with one of the studio's virtual actors — load the product sheet and allowed claims, recommend an actor, propose three ideas with script and cost, let the user choose drafts or direct final, draw a storyboard frame per shot, generate with Seedance 2.5 on Higgsfield, review, finalize, write the Meta ad text (primary text, headline, description, button) and save it in the studio so it shows in the gallery. Use when the user wants a video, ad, reel or UGC for a product.
 ---
 
 # Create a UGC video
@@ -9,7 +9,7 @@ The user is usually not a programmer. Talk in Spanish (Rioplatense, warm, short)
 recommend, they pick. Never spend credits without telling them the exact cost first.
 
 Shared files are in `${CLAUDE_PLUGIN_ROOT}/references/`: `claims-rules.md`, `costs.md`, `producto.md`,
-`prompts/ugc-video.md`, `marketing/hooks.md`, `marketing/copy.md`, `memoria.md` and `workspace.md`, the contract for where every file goes. Save every
+`prompts/ugc-video.md`, `marketing/hooks.md`, `marketing/copy.md`, `meta-ads.md`, `memoria.md` and `workspace.md`, the contract for where every file goes. Save every
 file exactly where it says: the gallery shows the work from the folders and
 updates by itself, so the user can follow along there. Read `studio.json` first; if it is
 missing, run `setup`.
@@ -135,10 +135,35 @@ Then tell the user what you saw, that it is in the gallery (every version stays 
 They judge the audio (voice, accent, lip-sync); you cannot hear it, so ask. Save each verdict
 with what failed and what fixed it (`memoria.md`).
 
-## 8. Close
+## 8. Ad text → decision 5
 
-Set `adName` in `video.json` if it is missing (`workspace.md`) and give it to the user: it is the
-name to use for the ad in Meta, so `leer-resultados` can find its results later.
+The video is only part of the ad: Meta also shows a text above it and a headline, description and
+button below it. Write that text once the video is approved, so the video is ready to upload as a
+complete creative.
+
+1. Write the `copy` from the chosen idea: same angle and promise as the hook and the script, in
+   other words (it complements the video, it does not transcribe it). `primaryText` ≤ 125
+   characters, `headline` ≤ 40, `description` ≤ 30 (optional) and `cta` one of Meta's buttons
+   (default Comprar), as in `meta-ads.md`, Text.
+2. Every product statement is an allowed claim of `ficha.md`, nothing breaks the policy list of
+   `meta-ads.md`, and it passes the gate and the self-check of `marketing/copy.md` (`[NEED: …]`
+   instead of invented proof). If `clientes/<profileId>/marca/marca.json` exists, follow its
+   `tone`, `voice` and `dos`/`donts` and use no word of `avoidWords`.
+3. Show it in chat and ask: **Aprobar** or **Cambiar** (rewrite only what they point at). It costs
+   no credits.
+4. Save the approved text as `copy` in `video.json` (`workspace.md`) and update `updatedAt`.
+   The gallery shows it under "Texto del anuncio" with a Copiar button per field. Save the
+   decision to memory (`memoria.md`).
+
+If the user skips it, close without `copy` and say that the text will have to be written when
+the ad is uploaded.
+
+## 9. Close
+
+Set `adName` in `video.json` if it is missing (`workspace.md`): it is the name to use for the
+ad in Meta, so `leer-resultados` can find its results later. Deliver the package ready for the
+MCP that uploads to Meta: the file (`final.mp4`), the `adName` and the copy (primary text,
+headline, description, CTA). Do not upload anything.
 
 Save the video's summary to memory (`memoria.md`: idea, actor, versions, credits, what worked).
 Summarize: video, status, total credits for this video, and where to see it (the gallery, and

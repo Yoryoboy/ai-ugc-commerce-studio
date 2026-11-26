@@ -66,7 +66,8 @@ json("clientes/acme/marca/marca.json", { name: "Acme SRL" });
 json(`${P}/producto.json`, { profileId: "acme", productId: "MLA1", title: "Patas de madera para cama", platform: "mercadolibre" });
 png(`${P}/fotos/f1.png`, "#8a6d3b", "400x400");
 const creativo = (id, extra) => json(`${CR(id)}/creativo.json`, { id, type: "static", status: "draft", slots: ["4x5"], updatedAt: "2026-11-16T12:00:00Z", ...extra });
-creativo(ids.dolor, { title: "Agacharse ya no duele", batch: "2026-11-16-patas-cama", slots: ["4x5", "9x16"], credits: 5.5, concept: { angle: "Dolor" }, actorId: "ana-v1" });
+creativo(ids.dolor, { title: "Agacharse ya no duele", batch: "2026-11-16-patas-cama", slots: ["4x5", "9x16"], credits: 5.5, concept: { angle: "Dolor" }, actorId: "ana-v1",
+  copy: { primaryText: "Subí la cama 10 cm.", headline: "Patas de madera", cta: "Comprar" }, adName: "MLA1_dolor_ana_estatica" });
 png(`${CR(ids.dolor)}/4x5-v1.png`, "#3b6ea5"); png(`${CR(ids.dolor)}/4x5-v2.png`, "#2a8f6a");
 png(`${CR(ids.dolor)}/9x16-v1.png`, "#a54b3b", "270x480"); png(`${CR(ids.dolor)}/9x16-v2.png`, "#8f2a6a", "270x480");
 creativo(ids.precio, { title: "Precio bajo, piso firme", batch: "2026-11-16-patas-cama", status: "approved", credits: 5.5, updatedAt: "2026-11-16T13:00:00Z" });
@@ -80,6 +81,8 @@ png(`${CR(ids.desc2)}/4x5-v1.png`, "#999999");
 
 json(`${VID(V1)}/video.json`, {
   id: V1, title: "La cama pegada al piso", actorId: "ana-v1", status: "draft", credits: 56, hook: "¿Ustedes también tienen la cama pegada?",
+  copy: { primaryText: "Mi cama estaba pegada al piso y lo arreglé en 5 minutos.", headline: "Patas de madera para cama", description: "Envío gratis", cta: "Comprar" },
+  adName: "MLA1_dolor_ana_video",
   versions: [{ n: 1, credits: 20 }, { n: 2, credits: 20 }, { n: 3, credits: 16 }], updatedAt: "2026-11-10T18:05:00Z",
 });
 for (const n of [1, 2, 3]) { file(`${VID(V1)}/borrador-v${n}.mp4`, "video " + n); png(`${VID(V1)}/thumb-v${n}.jpg`, ["#444444", "#555555", "#2f5f8a"][n - 1], "270x480"); }
@@ -256,6 +259,35 @@ await step("reopen: a discarded creative and a discarded video go back to draft 
   await page.click("Reabrir", "document.querySelector('.actions')");
   await page.waitFor(`!!document.querySelector(".pill.st-draft")`, "the draft pill on the video");
   expect(status(`${VID(V2)}/video.json`) === "draft", "video status on disk");
+});
+
+await step("ad copy: a video shows its Meta ad text with copy buttons like a creative; one without copy shows none", async () => {
+  const adText = () => page.eval(`(() => { const g = [...document.querySelectorAll(".group")].find((x) => (x.querySelector(".label") || {}).textContent === "Texto del anuncio"); return g ? [...g.querySelectorAll(".copyrow")].map((r) => r.querySelector(".label").textContent + "=" + r.querySelector("p").textContent + "|" + r.querySelector("button").getAttribute("aria-label")) : null; })()`);
+  await page.hash("#/elemento/" + VID(V1).split("/").map(encodeURIComponent).join("/"));
+  await page.waitFor(`document.querySelector("h1") && document.querySelector("h1").textContent === "La cama pegada al piso"`, "video detail");
+  const rows = await adText();
+  expect(JSON.stringify(rows) === JSON.stringify([
+    "Texto principal=Mi cama estaba pegada al piso y lo arreglé en 5 minutos.|Copiar texto principal",
+    "Titular=Patas de madera para cama|Copiar titular",
+    "Descripción=Envío gratis|Copiar descripción",
+    "Botón=Comprar|Copiar botón",
+    "Nombre del anuncio=MLA1_dolor_ana_video|Copiar nombre del anuncio",
+  ]), "video ad text: " + JSON.stringify(rows));
+  await page.shot("04b-video-texto-anuncio");
+
+  await page.hash("#/elemento/" + VID(V2).split("/").map(encodeURIComponent).join("/"));
+  await page.waitFor(`document.querySelector("h1") && document.querySelector("h1").textContent === "Video descartado de prueba"`, "video detail without copy");
+  expect((await adText()) === null, "a video without copy shows no ad text group");
+
+  await page.hash("#/elemento/" + CR(ids.dolor).split("/").map(encodeURIComponent).join("/"));
+  await page.waitFor(`document.querySelector("h1") && document.querySelector("h1").textContent === "Agacharse ya no duele"`, "creative detail");
+  const crows = await adText();
+  expect(JSON.stringify(crows) === JSON.stringify([
+    "Texto principal=Subí la cama 10 cm.|Copiar texto principal",
+    "Titular=Patas de madera|Copiar titular",
+    "Botón=Comprar|Copiar botón",
+    "Nombre del anuncio=MLA1_dolor_ana_estatica|Copiar nombre del anuncio",
+  ]), "creative ad text still shown: " + JSON.stringify(crows));
 });
 
 await step("reopen in multi-select: the bar button reopens the discarded ones and says so for the rest", async () => {

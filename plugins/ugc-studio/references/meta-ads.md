@@ -1,6 +1,6 @@
 # Meta Ads rules for creatives
 
-Used by `crear-creativos`. These are working rules, not legal advice: Meta can change them.
+Used by `crear-creativos`, and by `crear-video` for the ad text (Text, Policy). These are working rules, not legal advice: Meta can change them.
 
 ## Diversity (Andromeda)
 

@@ -1715,12 +1715,7 @@ async function creativeDetail(e, after, my) {
   };
   const k = j.concept || {};
   const mode = j.textMode === "template" ? "Plantilla" + (j.layout ? " · " + j.layout : "") : j.textMode === "integrated" ? "Texto en la imagen" : null;
-  const cp = j.copy || {};
-  const copyRows = [["Texto principal", cp.primaryText], ["Titular", cp.headline], ["Descripción", cp.description], ["Botón", cp.cta], ["Nombre del anuncio", j.adName]]
-    .filter(([, v]) => typeof v === "string" && v);
-  const copyRow = ([label, value]) => h("div", { class: "copyrow" },
-    h("div", {}, h("span", { class: "label" }, label), h("p", {}, value)),
-    h("button", { class: "chip", type: "button", "aria-label": "Copiar " + label.toLowerCase(), onclick: () => copyText(value, label.toLowerCase()) }, "Copiar"));
+  const adCopy = adCopyGroup(j);
   const pieces = e.pieces || [];
   return h("section", { class: "section" },
     h("div", { class: "info" },
@@ -1730,8 +1725,8 @@ async function creativeDetail(e, after, my) {
       detailActions(e, after)),
     pieces.length ? h("div", { class: "pieces" + (!isCarousel ? " static" : "") }, pieces.map(piece))
       : h("div", { class: "empty" }, h("p", { class: "muted" }, "Todavía no hay imágenes de este creativo.")),
-    h("div", { class: copyRows.length ? "cols" : "info" },
-      copyRows.length ? h("div", { class: "info" }, h("div", { class: "group" }, h("span", { class: "label" }, "Texto del anuncio"), copyRows.map(copyRow))) : null,
+    h("div", { class: adCopy ? "cols" : "info" },
+      adCopy ? h("div", { class: "info" }, adCopy) : null,
       h("div", { class: "info" },
         h("div", { class: "facts" },
           fact("Producto", e.productTitle || e.productId, true),
@@ -1742,6 +1737,19 @@ async function creativeDetail(e, after, my) {
           fact("Versiones", e.versionCount ? String(e.versionCount) : null),
           fact("Lote", e.batch), fact("Actualizado", fmtDate(e.updatedAt))),
         brand ? brandBlock(brand) : null)));
+}
+
+// The Meta ad text (copy and adName) of a creative or video, one row per field with its Copiar
+// button; null when the JSON has none (older videos).
+function adCopyGroup(j) {
+  const cp = j.copy && typeof j.copy === "object" ? j.copy : {};
+  const rows = [["Texto principal", cp.primaryText], ["Titular", cp.headline], ["Descripción", cp.description], ["Botón", cp.cta], ["Nombre del anuncio", j.adName]]
+    .filter(([, v]) => typeof v === "string" && v);
+  if (!rows.length) return null;
+  const row = ([label, value]) => h("div", { class: "copyrow" },
+    h("div", {}, h("span", { class: "label" }, label), h("p", {}, value)),
+    h("button", { class: "chip", type: "button", "aria-label": "Copiar " + label.toLowerCase(), onclick: () => copyText(value, label.toLowerCase()) }, "Copiar"));
+  return h("div", { class: "group" }, h("span", { class: "label" }, "Texto del anuncio"), rows.map(row));
 }
 
 function videoDetail(e, after) {
@@ -1780,6 +1788,7 @@ function videoDetail(e, after) {
           fact("Actualizado", fmtDate(e.updatedAt))),
         j.hook ? h("div", { class: "group" }, h("span", { class: "label" }, "Gancho"), h("p", {}, j.hook)) : null,
         j.script ? h("div", { class: "group" }, h("span", { class: "label" }, "Guion"), h("p", { class: "script" }, j.script)) : null,
+        adCopyGroup(j),
         scenes.length ? h("div", { class: "group" },
           h("span", { class: "label" }, "Storyboard"),
           h("div", { class: "scenes" }, scenes.map((s) =>

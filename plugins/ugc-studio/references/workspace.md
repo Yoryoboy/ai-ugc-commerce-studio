@@ -147,6 +147,12 @@ relative to the product folder.
   "angle": "Problema → solución",
   "hook": "¿Ustedes también tienen la cama pegada al piso?",
   "adName": "MLA1234567890_dolor_martin_video",
+  "copy": {
+    "primaryText": "Mi cama estaba pegada al piso y la subí 10 cm en 5 minutos.",
+    "headline": "Patas de madera para cama",
+    "description": "Envío gratis",
+    "cta": "Comprar"
+  },
   "script": "…",
   "durationSec": 15,
   "scenes": 4,
@@ -181,6 +187,10 @@ relative to the product folder.
 - `adName` (optional; older videos may lack it) is the name to give the ad in Meta, like a
   creative's: `<productId>_<angle>_<actorId without -vN>_video`, lowercase except the `productId`,
   `_` between parts, no spaces. `leer-resultados` matches Meta results to the video by it.
+- `copy` (optional; older videos lack it) is the ad text for Meta around the video, the same
+  fields as a creative's `copy`: `primaryText` (above the video), `headline` (below it),
+  `description` (optional) and `cta` (the button). Every product statement in it must be an
+  allowed claim. It is written after the video is approved (`crear-video`, step 8).
 
 The client and product come from the folder path, so `video.json` does not repeat them.
 
