@@ -311,6 +311,13 @@ El mod (guardia de gasto y medidor) se prueba con Claude Code 2.1.287 o más (ve
 probarlo contra un estudio real: `CLAUDE_PROJECT_DIR=<estudio> sh
 plugins/ugc-studio/scripts/sincronizar.sh --resumen`.
 
+Entorno de desarrollo de la galería, con datos de prueba (6 tiendas, productos, actores, ~150
+creativos y ~30 videos con imágenes y videos placeholder, sin gastar créditos):
+`node dev/galeria.mjs` arma el estudio de prueba en `dev/.studio/` (ignorado por git) si no existe
+y lo sirve en `http://127.0.0.1:4400/`. Editás `plugins/ugc-studio/galeria/galeria.html` y
+recargás el navegador. `--reset` lo vuelve a generar, `--seed N` cambia la mezcla, `--generar`
+solo lo arma y `--port` elige el puerto. Usa ImageMagick y ffmpeg si están instalados.
+
 Antes de publicar un cambio:
 
 1. Validar: `claude plugin validate .` y `claude plugin validate plugins/ugc-studio`.
