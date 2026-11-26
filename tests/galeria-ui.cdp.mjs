@@ -89,12 +89,34 @@ for (const n of [1, 2, 3]) { file(`${VID(V1)}/borrador-v${n}.mp4`, "video " + n)
 file(`${VID(V1)}/final.mp4`, "final"); file(`${VID(V1)}/prompt-v1.md`, "prompt");
 json(`${VID(V2)}/video.json`, { id: V2, title: "Video descartado de prueba", status: "discarded", versions: [{ n: 1 }], updatedAt: "2026-11-12T10:00:00Z" });
 file(`${VID(V2)}/borrador-v1.mp4`, "v"); png(`${VID(V2)}/thumb-v1.jpg`, "#666666", "270x480");
-json("clientes/beta/marca/marca.json", { name: "Beta Hogar" });
+json("clientes/beta/marca/marca.json", { name: "Beta Hogar", logo: "logo.png" });
+png("clientes/beta/marca/logo.png", "#224488", "200x200");
+// Only the ad preview step uses it: an ad text longer than the feed shows (it is cut with «Ver más»).
+const AD = "clientes/beta/MLB4/creativos/2026-11-19-x-anuncio";
+const AD_TEXT = "Tu dormitorio merece una luz cálida que no encandile. Este velador tiene tres intensidades, base de madera maciza y una pantalla de lino que suaviza todo.";
+json("clientes/beta/MLB4/producto.json", { profileId: "beta", productId: "MLB4", title: "Velador de noche", url: "https://www.betahogar.com.ar/velador-de-noche" });
+json(`${AD}/creativo.json`, { id: "2026-11-19-x-anuncio", title: "Luz que no encandila", type: "static", status: "draft", batch: "2026-11-19-velador", slots: ["4x5", "9x16"],
+  concept: { angle: "Deseo" }, updatedAt: "2026-11-19T12:00:00Z",
+  copy: { primaryText: AD_TEXT, headline: "Velador de noche", description: "Envío gratis a todo el país", cta: "Más información" } });
+png(`${AD}/4x5-v1.png`, "#b08d57"); png(`${AD}/9x16-v1.png`, "#57b08d", "270x480");
 json("clientes/beta/MLB2/producto.json", { profileId: "beta", productId: "MLB2", title: "Lámpara de pie" });
 // Only the viewer step uses it, so no other step changes its images or counts it.
 const VIS = "clientes/beta/MLB2/creativos/2026-11-15-x-visor";
 json(`${VIS}/creativo.json`, { id: "2026-11-15-x-visor", title: "Piezas para el visor", type: "static", status: "draft", batch: "2026-11-15-lampara", slots: ["4x5", "9x16"], updatedAt: "2026-11-15T12:00:00Z" });
 png(`${VIS}/4x5-v1.png`, "#1f6f8b"); png(`${VIS}/4x5-v2.png`, "#8b1f4e"); png(`${VIS}/9x16-v1.png`, "#4e8b1f", "270x480");
+// A product of its own for the card alignment step (one batch, one row): a title that wraps to two
+// lines, one far longer than two lines, a creative without status and a carousel of square cards.
+const AL = "clientes/beta/MLB3";
+const AL_CR = (id) => `${AL}/creativos/${id}`;
+const LARGO = "Funda de lino lavado a la piedra con cierre invisible, relleno de pluma y costuras reforzadas a mano una por una";
+const DOS = "Almohadón suave para el sillón del living";
+json(`${AL}/producto.json`, { profileId: "beta", productId: "MLB3", title: "Funda de almohadón" });
+const alineado = (id, extra) => json(`${AL_CR(id)}/creativo.json`, { id, type: "static", status: "draft", batch: "2026-11-18-funda", slots: ["4x5"], ...extra });
+alineado("2026-11-18-x-largo", { title: LARGO, updatedAt: "2026-11-18T12:00:00Z" }); png(`${AL_CR("2026-11-18-x-largo")}/4x5-v1.png`, "#6b8e23");
+alineado("2026-11-18-x-dos", { title: DOS, status: "approved", updatedAt: "2026-11-18T11:00:00Z" }); png(`${AL_CR("2026-11-18-x-dos")}/4x5-v1.png`, "#8e236b");
+alineado("2026-11-18-x-sin-estado", { title: "Sin estado todavía", status: undefined, updatedAt: "2026-11-18T10:00:00Z" }); png(`${AL_CR("2026-11-18-x-sin-estado")}/4x5-v1.png`, "#236b8e");
+alineado("2026-11-18-x-tarjetas", { title: "Tres pasos", type: "carousel", slots: ["tarjeta-1", "tarjeta-2"], updatedAt: "2026-11-18T09:00:00Z" });
+png(`${AL_CR("2026-11-18-x-tarjetas")}/tarjeta-1-v1.png`, "#8e6b23", "400x400"); png(`${AL_CR("2026-11-18-x-tarjetas")}/tarjeta-2-v1.png`, "#238e6b", "400x400");
 // An old entry in the trash (2020), written the way the server writes them.
 file(".papelera/2020-01-01T000000Z-abcdef/clientes/acme/viejo.txt", "old");
 json(".papelera/2020-01-01T000000Z-abcdef/papelera.json", { id: "2020-01-01T000000Z-abcdef", originalPath: "clientes/acme/viejo.txt", trashedAt: "2020-01-01T00:00:00Z", kind: "file" });
@@ -174,6 +196,17 @@ async function openPage(init) {
     cardTitles: () => page.eval(`[...document.querySelectorAll(".item h3")].map((h) => h.textContent)`),
     pick: (title) => page.eval(`(() => { const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector("h3").textContent === ${JSON.stringify(title)}); const i = c && c.querySelector(".pick input"); if (!i) throw new Error("no card: ${title}"); i.click(); return true; })()`),
     resources: () => page.eval(`performance.getEntriesByType("resource").map((e) => e.name)`),
+    // Real input through the browser (not synthetic DOM events): pointer and focus-visible behave as for a person.
+    mouse: (x, y) => cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x, y }),
+    async key(key, keyCode) {
+      await cdp("Input.dispatchKeyEvent", { type: "rawKeyDown", key, code: key, windowsVirtualKeyCode: keyCode });
+      await cdp("Input.dispatchKeyEvent", { type: "keyUp", key, code: key, windowsVirtualKeyCode: keyCode });
+    },
+    async tap(x, y) {
+      await cdp("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+      await cdp("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    },
+    cdp,
     async close() { await send("Target.closeTarget", { targetId }); },
   };
   return page;
@@ -206,6 +239,225 @@ await step("header: the used-credits tile shows the server's creditsUsed (actors
   const tile = await page.eval(`[...document.querySelectorAll(".tile")].find((t) => t.textContent.includes("Créditos usados")).querySelector(".value").textContent`);
   expect(tile === (92.75).toLocaleString("es-AR", { maximumFractionDigits: 2 }) || tile === "92,75", `tile shows ${tile}`);
   await page.shot("01-inicio");
+});
+
+await step("design system: header controls share 32px and one row, status pills differ by shape with no fill, Geist is embedded", async () => {
+  await page.hash("#/acme/MLA1/creativos");
+  await page.waitFor(`document.querySelectorAll(".item").length === 5`, "the creatives of the product");
+  const ctl = await page.eval(`["cliente-sel", "buscar"].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return { h: r.height, top: r.top }; })`);
+  expect(ctl[0].h === 32 && ctl[1].h === 32, "header select / search heights: " + JSON.stringify(ctl));
+  expect(ctl[0].top === ctl[1].top, "header select and search do not share one row: " + JSON.stringify(ctl));
+  const exp = await page.eval(`(() => { const b = document.querySelector("#export-todo .btn").getBoundingClientRect(); const s = document.getElementById("buscar").getBoundingClientRect();
+    return { h: b.height, mid: b.top + b.height / 2, search: s.top + s.height / 2 }; })()`);
+  expect(exp.h === 32 && Math.abs(exp.mid - exp.search) <= 0.5, "header export button is not 32px on the search box's middle: " + JSON.stringify(exp));
+  const pills = await page.eval(`["draft", "approved", "discarded"].map((s) => {
+    const p = document.querySelector(".item .pill.st-" + s);
+    if (!p) return null;
+    const b = getComputedStyle(p, "::before");
+    const own = getComputedStyle(p);
+    return { s, shape: [b.width, b.height, b.borderTopLeftRadius, b.transform, b.clipPath, b.borderTopWidth, b.borderTopStyle, b.backgroundColor === "rgba(0, 0, 0, 0)" ? "hollow" : "filled"].join("|"),
+      fill: own.backgroundColor + " " + own.backgroundImage };
+  })`);
+  expect(pills.every(Boolean), "missing status pills: " + JSON.stringify(pills));
+  expect(new Set(pills.map((p) => p.shape)).size === 3, "draft / approved / discarded share a dot shape: " + JSON.stringify(pills.map((p) => p.shape)));
+  for (const p of pills) expect(p.fill === "rgba(0, 0, 0, 0) none", `status ${p.s} has a background fill: ${p.fill}`);
+  const tagRow = await page.eval(`(() => { const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector(".tag.type") && x.querySelector(".pill")); return c ? [c.querySelector(".pill").getBoundingClientRect().height, c.querySelector(".tag.type").getBoundingClientRect().height] : null; })()`);
+  expect(tagRow && tagRow[0] === tagRow[1], "type tag and status pill heights: " + JSON.stringify(tagRow));
+  const font = await page.eval(`document.fonts.load("13px Geist").then(() => document.fonts.ready).then(() => ({
+    check: document.fonts.check("13px Geist"),
+    loaded: [...document.fonts].some((f) => f.family.replace(/["']/g, "") === "Geist" && f.status === "loaded"),
+    body: getComputedStyle(document.body).fontFamily }))`);
+  expect(font.check && font.loaded, "Geist is not embedded and loaded: " + JSON.stringify(font));
+  expect(/^"?Geist"?,/.test(font.body), "body font stack does not start with Geist: " + font.body);
+  await page.shot("01b-design-system");
+});
+
+await step("list cards: title and meta start at the same height across a row (2-line title, no status), long titles clamp to 2 lines with the full title kept, covers fill the frame, selected is accent + accent-soft, checkbox and badge share one shape", async () => {
+  await page.hash("#/beta/MLB3/creativos");
+  await page.waitFor(`document.querySelectorAll(".item.creative").length === 4`, "the four creatives of the alignment product");
+  const cards = await page.eval(`[...document.querySelectorAll(".item.creative")].map((c) => {
+    const t = c.querySelector("h3"); const m = c.querySelector(".meta"); const img = c.querySelector(".media img");
+    const range = document.createRange(); range.selectNodeContents(t);
+    return { title: t.textContent, attr: t.getAttribute("title"), row: Math.round(c.getBoundingClientRect().top), h3: t.getBoundingClientRect().top,
+      meta: m ? m.getBoundingClientRect().top : null, box: t.getBoundingClientRect().height, text: range.getBoundingClientRect().height,
+      lh: parseFloat(getComputedStyle(t).lineHeight), pill: !!c.querySelector(".pill"), fit: img ? getComputedStyle(img).objectFit : null,
+      type: (c.querySelector(".tag.type") || {}).textContent || "" };
+  })`);
+  const by = (t) => cards.find((c) => c.title === t);
+  const [largo, dos, sin, tres] = [by(LARGO), by(DOS), by("Sin estado todavía"), by("Tres pasos")];
+  expect(largo && dos && sin && tres, "missing cards: " + JSON.stringify(cards.map((c) => c.title)));
+  expect(!sin.pill, "the creative without status shows a status pill");
+  expect(new Set(cards.map((c) => c.row)).size === 1, "the four cards are not in one row: " + JSON.stringify(cards.map((c) => c.row)));
+  expect(dos.text > dos.lh * 1.5, `the two-line title fits in one line (text ${dos.text}px, line ${dos.lh}px)`);
+  const spread = (k) => Math.max(...cards.map((c) => c[k])) - Math.min(...cards.map((c) => c[k]));
+  expect(spread("h3") <= 1, "titles start at different heights: " + JSON.stringify(cards.map((c) => [c.title.slice(0, 12), c.h3])));
+  expect(cards.every((c) => c.meta !== null) && spread("meta") <= 1, "meta lines start at different heights: " + JSON.stringify(cards.map((c) => [c.title.slice(0, 12), c.meta])));
+  expect(largo.text > largo.lh * 2.5, "the long title is not longer than two lines, the clamp is not tested: " + largo.text);
+  expect(largo.box <= largo.lh * 2 + 1, `the long title is not clamped to two lines (${largo.box}px)`);
+  expect(cards.every((c) => c.attr === c.title), "the full title is not in the title attribute: " + JSON.stringify(cards.map((c) => c.attr)));
+  expect(tres.type.startsWith("Carrusel") && tres.fit === "cover", "the carousel cover does not fill the frame: " + JSON.stringify([tres.type, tres.fit]));
+  await page.eval(`document.querySelector(".item.creative").scrollIntoView({ block: "center" }), true`);
+  await page.shot("01c-tarjetas-alineadas");
+  // Selected: accent border + accent-soft fill (hover only strengthens the border).
+  await page.pick("Sin estado todavía");
+  const sel = await page.eval(`(() => {
+    const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector("h3").textContent === "Sin estado todavía");
+    const probe = document.createElement("div"); probe.style.cssText = "background: var(--accent-soft); border: 1px solid var(--accent)"; document.body.append(probe);
+    const want = getComputedStyle(probe); const got = getComputedStyle(c);
+    const out = { bg: got.backgroundColor, border: got.borderTopColor, outline: got.outlineStyle, wantBg: want.backgroundColor, wantBorder: want.borderTopColor };
+    probe.remove(); return out; })()`);
+  expect(sel.bg === sel.wantBg && sel.border === sel.wantBorder, "selected card is not accent border + accent-soft fill: " + JSON.stringify(sel));
+  // Small text on --accent-soft reaches 4.5:1 in dark mode too (--text-2 there, --text-3 is 4.09:1).
+  await page.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
+  let ratio;
+  try {
+    ratio = await page.eval(`(() => {
+      const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector("h3").textContent === "Sin estado todavía");
+      const rgb = (s) => s.match(/[\\d.]+/g).slice(0, 3).map(Number);
+      const lum = (s) => { const [r, g, b] = rgb(s).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      const [a, b] = [lum(getComputedStyle(c.querySelector(".meta")).color), lum(getComputedStyle(c).backgroundColor)].sort((x, y) => y - x);
+      return Math.round((a + 0.05) / (b + 0.05) * 100) / 100; })()`);
+  } finally { await page.cdp("Emulation.setEmulatedMedia", { features: [] }); }
+  expect(ratio >= 4.5, "dark mode: meta text on the selected card is " + ratio + ":1");
+  await page.shot("01d-tarjeta-seleccionada");
+  await page.pick("Sin estado todavía");
+  expect(await page.eval(`state.selection.size === 0`), "the card did not unselect");
+  // The checkbox overlay and the kind badge in search results are one shape.
+  await page.hash("#/buscar?cliente=beta&tipo=creativo");
+  await page.waitFor(`document.querySelectorAll(".item.creative .media .badge").length >= 4`, "search results with kind badges");
+  const shapes = await page.eval(`(() => { const c = document.querySelector(".item.creative");
+    return [c.querySelector(".pick"), c.querySelector(".media .badge")].map((el) => { const s = getComputedStyle(el); const r = el.getBoundingClientRect();
+      return [r.height, s.borderTopLeftRadius, s.backgroundColor, s.borderTopColor, s.borderTopWidth].join("|") + "@" + Math.round(r.top); }); })()`);
+  expect(shapes[0] === shapes[1], "checkbox overlay and corner badge differ in shape or top: " + JSON.stringify(shapes));
+});
+
+const MLA1_LIST = "#/acme/MLA1/creativos";
+const srcOf = (p) => "/" + p; // studio path as the quick view shows it, thumbnail or full file
+const quickView = (page) => page.eval(`(() => { const p = document.getElementById("vista-rapida"); if (!p || p.hidden) return null;
+  const r = p.getBoundingClientRect();
+  return { inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && r.width > 0,
+    pieces: [...p.querySelectorAll("figure")].map((f) => { const i = f.querySelector("img");
+      return f.querySelector("figcaption").textContent + "=" + (i ? decodeURIComponent(i.getAttribute("src").split("?")[0]).replace(/^\\/miniatura\\//, "/") : "none"); }) }; })()`);
+const cardPoint = (page, titleText, part = ".media") => page.eval(`(() => {
+  const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector("h3").textContent === ${JSON.stringify(titleText)});
+  if (!c) throw new Error("no card: " + ${JSON.stringify(titleText)});
+  c.scrollIntoView({ block: "center" });
+  const r = c.querySelector(${JSON.stringify(part)}).getBoundingClientRect();
+  return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+// Screenshots of the quick view once its images are in and the fade is over.
+const qvSettled = async (page) => { await page.waitFor(`[...document.querySelectorAll("#vista-rapida img")].every((i) => i.complete)`, "the quick view images", 4000); await sleep(200); };
+const DOLOR_PIECES = ["4:5=" + srcOf(`${CR(ids.dolor)}/4x5-v2.png`), "9:16=" + srcOf(`${CR(ids.dolor)}/9x16-v2.png`)];
+
+await step("quick view: hovering a creative card shows its current pieces after a short delay, carousels show every card, Escape and leaving close it, the route does not change and the checkbox stays clickable", async () => {
+  await page.hash(MLA1_LIST);
+  await page.waitFor(`document.querySelectorAll(".item").length === 5`, "the creatives of the product");
+  await page.mouse(1, 1);
+  const hash0 = await page.eval(`location.hash`);
+  const d = await cardPoint(page, "Agacharse ya no duele");
+  await sleep(150); // let the scroll settle before the pointer arrives
+  await page.mouse(d.x, d.y);
+  expect((await quickView(page)) === null, "the quick view opened at once, without the hover delay");
+  await page.waitFor(`(() => { const p = document.getElementById("vista-rapida"); return !!p && !p.hidden && p.querySelectorAll("figure").length === 2; })()`, "the quick view of the static creative");
+  let v = await quickView(page);
+  expect(JSON.stringify(v.pieces) === JSON.stringify(DOLOR_PIECES), "static pieces: " + JSON.stringify(v.pieces));
+  expect(v.inside, "the quick view leaves the viewport");
+  const pick = await page.eval(`(() => { const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector("h3").textContent === "Agacharse ya no duele");
+    const r = c.querySelector(".pick").getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!hit && hit.closest(".pick") === c.querySelector(".pick"); })()`);
+  expect(pick, "the quick view covers the card checkbox");
+  await qvSettled(page);
+  await page.shot("02a-vista-rapida-estatica");
+  // Another card: the carousel shows its cards 1…N (a card without an image says so).
+  const k = await cardPoint(page, "Carrusel de tres pasos");
+  await sleep(150);
+  await page.mouse(k.x, k.y);
+  await page.waitFor(`(() => { const p = document.getElementById("vista-rapida"); return !!p && !p.hidden && [...p.querySelectorAll("figcaption")].some((f) => f.textContent === "Tarjeta 1"); })()`, "the quick view of the carousel");
+  v = await quickView(page);
+  expect(JSON.stringify(v.pieces) === JSON.stringify(["Tarjeta 1=" + srcOf(`${CR(ids.carrusel)}/tarjeta-1-v2.png`), "Tarjeta 2=" + srcOf(`${CR(ids.carrusel)}/tarjeta-2-v1.png`), "Tarjeta 3=none"]),
+    "carousel pieces: " + JSON.stringify(v.pieces));
+  expect(v.inside, "the carousel quick view leaves the viewport");
+  await qvSettled(page);
+  await page.shot("02b-vista-rapida-carrusel");
+  await page.key("Escape", 27);
+  await page.waitFor(`document.getElementById("vista-rapida").hidden`, "Escape to close the quick view");
+  // Leaving the card closes it too.
+  const d2 = await cardPoint(page, "Agacharse ya no duele");
+  await sleep(150);
+  await page.mouse(d2.x, d2.y);
+  await page.waitFor(`!document.getElementById("vista-rapida").hidden`, "the quick view again");
+  await page.mouse(1, 1);
+  await page.waitFor(`document.getElementById("vista-rapida").hidden`, "leaving the card to close the quick view");
+  expect((await page.eval(`location.hash`)) === hash0, "hovering changed the route: " + (await page.eval(`location.hash`)));
+});
+
+await step("quick view: keyboard focus on the card link shows it, Escape and moving focus away close it", async () => {
+  await page.hash(MLA1_LIST);
+  await page.waitFor(`document.querySelectorAll(".item").length === 5`, "the creatives of the product");
+  await page.mouse(1, 1);
+  const hash0 = await page.eval(`location.hash`);
+  await page.eval(`(() => { const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector("h3").textContent === "Agacharse ya no duele");
+    c.scrollIntoView({ block: "center" }); c.querySelector(".pick input").focus(); return true; })()`);
+  await sleep(150);
+  await page.key("Tab", 9);
+  expect(await page.eval(`!!document.activeElement.closest(".cardlink") && document.activeElement.closest(".item").querySelector("h3").textContent === "Agacharse ya no duele"`),
+    "Tab did not reach the card link");
+  await page.waitFor(`(() => { const p = document.getElementById("vista-rapida"); return !!p && !p.hidden && p.querySelectorAll("figure").length === 2; })()`, "the quick view on keyboard focus");
+  const v = await quickView(page);
+  expect(JSON.stringify(v.pieces) === JSON.stringify(DOLOR_PIECES), "pieces on focus: " + JSON.stringify(v.pieces));
+  await qvSettled(page);
+  await page.shot("02c-vista-rapida-teclado");
+  await page.key("Escape", 27);
+  await page.waitFor(`document.getElementById("vista-rapida").hidden`, "Escape to close the quick view opened by focus");
+  await page.key("Tab", 9);
+  await sleep(500);
+  expect(await page.eval(`document.getElementById("vista-rapida").hidden`), "the quick view stayed open after focus moved on");
+  expect((await page.eval(`location.hash`)) === hash0, "keyboard focus changed the route");
+});
+
+await step("quick view: Tab onto a card that is partly off-screen scrolls it into view and the quick view still opens; the focused card shows its ring", async () => {
+  await page.hash(MLA1_LIST);
+  await page.waitFor(`document.querySelectorAll(".item").length === 5`, "the creatives of the product");
+  await page.mouse(1, 1);
+  await page.cdp("Emulation.setDeviceMetricsOverride", { width: 1280, height: 560, deviceScaleFactor: 1, mobile: false });
+  try {
+    await sleep(150);
+    const pre = await page.eval(`(() => { const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector("h3").textContent === "Agacharse ya no duele");
+      window.scrollBy(0, c.getBoundingClientRect().top - (innerHeight - 140));
+      c.querySelector(".pick input").focus({ preventScroll: true });
+      const r = c.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, vh: innerHeight, y: scrollY }; })()`);
+    expect(pre.top < pre.vh && pre.bottom > pre.vh, "the card is not partly off-screen: " + JSON.stringify(pre));
+    await sleep(150);
+    await page.key("Tab", 9);
+    expect(await page.eval(`!!document.activeElement.closest(".cardlink") && document.activeElement.closest(".item").querySelector("h3").textContent === "Agacharse ya no duele"`),
+      "Tab did not reach the card link");
+    await page.waitFor(`(() => { const p = document.getElementById("vista-rapida"); return !!p && !p.hidden && p.querySelectorAll("figure").length === 2; })()`, "the quick view after Tab scrolled the card into view");
+    expect((await page.eval(`scrollY`)) !== pre.y, "Tab did not scroll the card into view, so the case is not tested");
+    const v = await quickView(page);
+    expect(JSON.stringify(v.pieces) === JSON.stringify(DOLOR_PIECES) && v.inside, "quick view after the scroll: " + JSON.stringify(v));
+    const ring = await page.eval(`(() => { const c = document.activeElement.closest(".item"); const s = getComputedStyle(c); return { style: s.outlineStyle, width: s.outlineWidth, offset: s.outlineOffset }; })()`);
+    expect(ring.style === "solid" && parseFloat(ring.width) >= 2 && parseFloat(ring.offset) >= 0, "the focused card has no ring outside its clipped box: " + JSON.stringify(ring));
+    await qvSettled(page);
+    await page.shot("02d-vista-rapida-teclado-con-scroll");
+    await page.key("Escape", 27);
+    await page.waitFor(`document.getElementById("vista-rapida").hidden`, "Escape to close the quick view");
+  } finally { await page.cdp("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }); }
+});
+
+await step("quick view: a touch tap on a card opens the detail and never shows the quick view", async () => {
+  await page.hash(MLA1_LIST);
+  await page.waitFor(`document.querySelectorAll(".item").length === 5`, "the creatives of the product");
+  await page.eval(`(() => { window.__qvShown = false; new MutationObserver(() => { const p = document.getElementById("vista-rapida"); if (p && !p.hidden) window.__qvShown = true; })
+    .observe(document.body, { subtree: true, attributes: true, childList: true }); return true; })()`);
+  const d = await cardPoint(page, "Agacharse ya no duele");
+  await sleep(150);
+  await page.cdp("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+  try {
+    await page.tap(d.x, d.y);
+    await page.waitFor(`document.querySelector("h1") && document.querySelector("h1").textContent === "Agacharse ya no duele"`, "the tap to open the detail");
+    await sleep(500);
+  } finally { await page.cdp("Emulation.setTouchEmulationEnabled", { enabled: false }); }
+  expect(await page.eval(`window.__qvShown === false`), "a touch tap showed the quick view");
+  expect((await page.eval(`location.hash`)) === "#/elemento/" + CR(ids.dolor).split("/").map(encodeURIComponent).join("/"), "the tap did not open the detail: " + (await page.eval(`location.hash`)));
 });
 
 await step("cards and search results show the product and client names, creative type and pieces", async () => {
@@ -288,6 +540,191 @@ await step("ad copy: a video shows its Meta ad text with copy buttons like a cre
     "Botón=Comprar|Copiar botón",
     "Nombre del anuncio=MLA1_dolor_ana_estatica|Copiar nombre del anuncio",
   ]), "creative ad text still shown: " + JSON.stringify(crows));
+});
+
+const detailOf = async (rel, h1) => {
+  await page.hash("#/elemento/" + rel.split("/").map(encodeURIComponent).join("/"));
+  await page.waitFor(`document.querySelector("h1") && document.querySelector("h1").textContent === ${JSON.stringify(h1)}`, "detail of " + h1);
+};
+const imgsLoaded = (sel) => page.waitFor(`[...document.querySelectorAll(${JSON.stringify(sel)})].every((i) => i.complete)`, "images of " + sel, 6000);
+// Studio path of an <img> src, thumbnail or full file (the same form as srcOf).
+const SRC = `(i) => i ? decodeURIComponent(i.getAttribute("src").split("?")[0]).replace(/^\\/miniatura\\//, "/") : null`;
+
+await step("detail pieces: a static's 4:5 and 9:16 share one larger height, captions and older versions sit on one line; carousel cards keep a fixed 4:5 frame in one row", async () => {
+  await detailOf(CR(ids.dolor), "Agacharse ya no duele");
+  await imgsLoaded(".pieces img");
+  const f = await page.eval(`[...document.querySelectorAll(".pieces figure")].map((x) => { const i = x.querySelector(".shot img").getBoundingClientRect();
+    const o = x.querySelector(".olds");
+    return { cls: x.className, img: i.height, cap: x.querySelector("figcaption").getBoundingClientRect().top, olds: o ? o.getBoundingClientRect().top : null }; })`);
+  expect(f.length === 2 && /r4x5/.test(f[0].cls) && /r9x16/.test(f[1].cls), "pieces: " + JSON.stringify(f));
+  expect(Math.abs(f[0].img - f[1].img) <= 1, "4:5 and 9:16 images differ in height: " + JSON.stringify(f));
+  expect(f[0].img >= 440, "the pieces are not larger than before (4:5 was 375px, 9:16 400px): " + f[0].img);
+  expect(Math.abs(f[0].cap - f[1].cap) <= 1, "captions are not on one line: " + JSON.stringify(f));
+  expect(f[0].olds !== null && f[1].olds !== null && Math.abs(f[0].olds - f[1].olds) <= 1, "older versions are not on one line: " + JSON.stringify(f));
+  await page.eval(`document.querySelector(".pieces").scrollIntoView({ block: "start" }), true`);
+  await page.shot("04c-detalle-piezas-alineadas");
+
+  await detailOf(CR(ids.carrusel), "Carrusel de tres pasos");
+  const c = await page.eval(`[...document.querySelectorAll(".pieces figure .shot")].map((s) => { const r = s.getBoundingClientRect(); return { top: Math.round(r.top), h: r.height, ratio: getComputedStyle(s).aspectRatio }; })`);
+  expect(c.length === 3, "carousel cards: " + JSON.stringify(c));
+  expect(c.every((x) => x.ratio === "4 / 5"), "carousel frames are not a fixed 4:5 before the images load: " + JSON.stringify(c));
+  expect(new Set(c.map((x) => x.top)).size === 1 && Math.max(...c.map((x) => x.h)) - Math.min(...c.map((x) => x.h)) <= 1, "carousel cards are not one row of one height (the missing card included): " + JSON.stringify(c));
+  await detailOf(`${AL}/creativos/2026-11-18-x-tarjetas`, "Tres pasos");
+  await imgsLoaded(".pieces img");
+  const sq = await page.eval(`[...document.querySelectorAll(".pieces figure .shot")].map((s) => getComputedStyle(s).aspectRatio + "|" + getComputedStyle(s.querySelector("img")).objectFit)`);
+  expect(JSON.stringify(sq) === JSON.stringify(["4 / 5|contain", "4 / 5|contain"]), "square cards are not shown whole in the 4:5 frame: " + JSON.stringify(sq));
+});
+
+const mock = () => page.eval(`(() => { const m = document.querySelector(".admock"); if (!m) return null; const t = (s) => { const e = m.querySelector(s); return e ? e.textContent : null; };
+  const av = m.querySelector(".am-avatar");
+  return { stories: m.classList.contains("stories"), name: t(".am-name"), sub: t(".am-sub"), avatar: av ? (av.querySelector("img") ? "img:" + decodeURIComponent(av.querySelector("img").getAttribute("src")) : "text:" + av.textContent) : null,
+    text: t(".am-text"), note: t(".am-note"), headline: t(".am-headline"), desc: t(".am-desc"), cta: t(".am-cta"), img: (${SRC})(m.querySelector(".am-media img")),
+    video: !!m.querySelector(".am-media video"), modes: [...document.querySelectorAll(".admock-bar [data-modo]")].map((b) => b.textContent + "=" + b.getAttribute("aria-pressed")) }; })()`);
+const toMock = () => page.eval(`document.querySelector(".admock").scrollIntoView({ block: "center" }), true`);
+const modo = (name) => page.eval(`(() => { const b = [...document.querySelectorAll(".admock-bar button")].find((x) => x.textContent === ${JSON.stringify(name)}); if (!b) throw new Error("no preview button: ${name}"); b.click(); return true; })()`);
+
+await step("ad preview: a creative with copy shows its text, headline and button around the 4:5 piece under the client's name; Stories swaps to the 9:16 with the covered zones; without copy a neutral note and no button", async () => {
+  await detailOf(CR(ids.dolor), "Agacharse ya no duele");
+  let m = await mock();
+  expect(m, "no ad preview in the creative detail");
+  expect(m.name === "Acme SRL" && m.sub === "Publicidad" && m.avatar === "text:A", "ad header (client, Publicidad, initial without a logo): " + JSON.stringify(m));
+  expect(m.text === "Subí la cama 10 cm." && m.headline === "Patas de madera" && m.cta === "Comprar" && m.desc === null && m.note === null, "ad text: " + JSON.stringify(m));
+  expect(!m.stories && m.img === srcOf(`${CR(ids.dolor)}/4x5-v2.png`), "feed preview shows " + m.img);
+  expect(JSON.stringify(m.modes) === JSON.stringify(["Facebook Feed=true", "Instagram Feed=false", "Instagram Stories=false"]), "preview modes: " + JSON.stringify(m.modes));
+  await toMock();
+  await page.shot("04d-anuncio-feed");
+  await modo("Instagram Stories");
+  m = await mock();
+  expect(m.stories && m.img === srcOf(`${CR(ids.dolor)}/9x16-v2.png`) && m.cta === "Comprar", "stories preview: " + JSON.stringify(m));
+  expect(JSON.stringify(m.modes) === JSON.stringify(["Facebook Feed=false", "Instagram Feed=false", "Instagram Stories=true"]), "preview modes in stories: " + JSON.stringify(m.modes));
+  await modo("Zonas tapadas");
+  const z = await page.eval(`(() => { const f = document.querySelector(".admock").getBoundingClientRect(); const [t, b] = [...document.querySelectorAll(".admock .am-zone")].map((e) => e.getBoundingClientRect());
+    return { top: Math.abs(t.height - f.height * .14) <= 1.5 && Math.abs(t.top - f.top) <= 1.5, bottom: Math.abs(b.height - f.height * .35) <= 1.5 && Math.abs(b.bottom - f.bottom) <= 1.5, vis: [t.height, b.height, f.height] }; })()`);
+  expect(z.top && z.bottom, "covered zones are not the top 14% and bottom 35% of the story: " + JSON.stringify(z.vis));
+  await toMock();
+  await page.shot("04e-anuncio-stories");
+  await modo("Facebook Feed");
+  m = await mock();
+  expect(!m.stories && m.img === srcOf(`${CR(ids.dolor)}/4x5-v2.png`), "back to feed shows " + m.img);
+
+  await detailOf(CR(ids.precio), "Precio bajo, piso firme");
+  m = await mock();
+  expect(m && m.note === "Todavía no tiene texto del anuncio", "no-copy note: " + JSON.stringify(m));
+  expect(m.cta === null && m.text === null && m.headline === null && m.desc === null, "a creative without copy shows invented text or a button: " + JSON.stringify(m));
+  expect(m.img === srcOf(`${CR(ids.precio)}/4x5-v1.png`) && JSON.stringify(m.modes) === JSON.stringify(["Facebook Feed=true", "Instagram Feed=false"]),
+    "without a 9:16 there is no Stories toggle and the 4:5 is shown: " + JSON.stringify(m));
+
+  await detailOf(AD, "Luz que no encandila");
+  m = await mock();
+  expect(m.avatar === "img:/clientes/beta/marca/logo.png" && m.name === "Beta Hogar", "client logo in the ad header: " + JSON.stringify(m));
+  expect(m.text !== AD_TEXT && m.text.endsWith("… Ver más") && AD_TEXT.startsWith(m.text.slice(0, -"… Ver más".length)) && m.text.length - "… Ver más".length <= 125,
+    "a text longer than 125 characters is not cut with «… Ver más»: " + m.text);
+  expect(m.headline === "Velador de noche" && m.desc === "Envío gratis a todo el país" && m.cta === "Más información", "headline, description and button: " + JSON.stringify(m));
+  await page.eval(`document.querySelector(".admock .am-more").click(), true`);
+  expect((await mock()).text === AD_TEXT, "«Ver más» does not show the whole text");
+  await toMock();
+  await page.shot("04f-anuncio-texto-largo");
+});
+
+// What the preview shows in its current placement, as a person reads it.
+const placement = () => page.eval(`(() => { const m = document.querySelector(".admock"); if (!m) return null; const one = (q) => m.querySelector(q);
+  const pressed = (attr) => [...document.querySelectorAll(".admock-bar [" + attr + "]")].map((b) => b.textContent + "=" + b.getAttribute("aria-pressed"));
+  const strip = one(".am-strip"); const prog = one(".am-progress");
+  return { cls: m.className, text: m.innerText.replace(/\\s+/g, " "), name: one(".am-name") && one(".am-name").textContent, cta: one(".am-cta") && one(".am-cta").textContent,
+    img: (${SRC})(one(".am-media img")), strip: strip ? strip.innerText.trim() + "|svg:" + strip.querySelectorAll("svg").length : null,
+    progress: prog ? prog.getBoundingClientRect().height : 0, actions: m.querySelectorAll(".am-actions svg").length,
+    buttons: [...m.querySelectorAll("button")].map((b) => b.textContent), controls: m.querySelectorAll("a, input, select, textarea").length,
+    logos: [...document.querySelectorAll("img")].filter((i) => /facebook|instagram|meta/i.test((i.getAttribute("src") || "") + " " + (i.getAttribute("alt") || ""))).map((i) => i.getAttribute("src")),
+    modes: pressed("data-modo"), themes: pressed("data-tema"), bg: getComputedStyle(m).backgroundColor, body: getComputedStyle(document.body).backgroundColor }; })()`);
+const AD_SHORT = AD_TEXT.slice(0, 60);
+
+await step("ad preview (Meta placements): Facebook Feed, Instagram Feed and Instagram Stories reproduce each layout with the piece and the copy; a Claro / Oscuro switch recolors only the preview; no app logos", async () => {
+  await detailOf(CR(ids.precio), "Precio bajo, piso firme"); // a fresh draw of the next one (the previous step opened its «Ver más»)
+  await detailOf(AD, "Luz que no encandila");
+  let f = await placement();
+  expect(f, "no ad preview");
+  expect(JSON.stringify(f.modes) === JSON.stringify(["Facebook Feed=true", "Instagram Feed=false", "Instagram Stories=false"]), "placement switch: " + JSON.stringify(f.modes));
+  expect(JSON.stringify(f.themes) === JSON.stringify(["Claro=true", "Oscuro=false"]), "theme switch (light by default): " + JSON.stringify(f.themes));
+  // Facebook feed: page name, Publicidad, the text cut with Ver más, the 4:5, the link bar (domain, headline, description, button), the reactions row.
+  for (const part of ["Beta Hogar", "Publicidad", AD_SHORT, "Ver más", "BETAHOGAR.COM.AR", "Velador de noche", "Envío gratis a todo el país", "Más información", "Me gusta", "Comentar", "Compartir"]) has(f.text, part, "Facebook feed");
+  expect(/\bfb\b/.test(f.cls) && f.name === "Beta Hogar" && f.cta === "Más información" && f.img === srcOf(`${AD}/4x5-v1.png`), "Facebook feed: " + JSON.stringify(f));
+  expect(JSON.stringify(f.buttons) === JSON.stringify(["Ver más"]) && f.controls === 0, "only «Ver más» is interactive in the Facebook feed: " + JSON.stringify([f.buttons, f.controls]));
+  expect(f.logos.length === 0, "an image names an app logo: " + JSON.stringify(f.logos));
+  await toMock();
+  await page.shot("04h-meta-facebook-claro");
+  // Light / dark: the preview changes, the gallery does not.
+  await modo("Oscuro");
+  let d = await placement();
+  expect(JSON.stringify(d.themes) === JSON.stringify(["Claro=false", "Oscuro=true"]), "theme switch after Oscuro: " + JSON.stringify(d.themes));
+  expect(d.bg !== f.bg && d.body === f.body, "Oscuro must recolor the preview only: " + JSON.stringify({ light: [f.bg, f.body], dark: [d.bg, d.body] }));
+  await page.shot("04i-meta-facebook-oscuro");
+  await modo("Claro");
+  expect((await placement()).bg === f.bg, "Claro does not bring the light preview back");
+  // Instagram feed: the handle, the media, the CTA strip with a chevron, the action icons, the caption cut with «más».
+  await modo("Instagram Feed");
+  f = await placement();
+  expect(/\big\b/.test(f.cls) && f.name === "betahogar" && f.img === srcOf(`${AD}/4x5-v1.png`), "Instagram feed: " + JSON.stringify(f));
+  expect(f.strip === "Más información|svg:1" && f.cta === "Más información", "Instagram CTA strip: " + JSON.stringify(f.strip));
+  expect(f.actions === 4, "Instagram action icons (like, comment, send, save): " + f.actions);
+  has(f.text, "Publicidad", "Instagram feed");
+  has(f.text, "betahogar " + AD_SHORT, "Instagram caption");
+  expect(JSON.stringify(f.buttons) === JSON.stringify(["más"]) && f.controls === 0 && !f.text.includes("Me gusta"), "Instagram feed controls: " + JSON.stringify([f.buttons, f.controls]));
+  await toMock();
+  await page.shot("04j-meta-instagram-claro");
+  await modo("Oscuro");
+  d = await placement();
+  expect(d.bg !== f.bg && d.body === f.body, "Oscuro in the Instagram feed: " + JSON.stringify([f.bg, d.bg, f.body, d.body]));
+  await page.shot("04k-meta-instagram-oscuro");
+  // Instagram Stories: the 9:16 full frame, the progress bar, the handle, the button at the bottom.
+  await modo("Instagram Stories");
+  f = await placement();
+  expect(/\bstories\b/.test(f.cls) && f.img === srcOf(`${AD}/9x16-v1.png`) && f.progress > 0 && f.name === "betahogar" && f.cta === "Más información", "Instagram Stories: " + JSON.stringify(f));
+  has(f.text, "Publicidad", "Instagram Stories");
+  expect(f.buttons.length === 0 && f.controls === 0, "the story has controls: " + JSON.stringify(f.buttons));
+  await toMock();
+  await page.shot("04l-meta-stories-oscuro");
+  await modo("Claro");
+  await page.shot("04m-meta-stories-claro");
+  // Without copy: the note, never a button or a CTA strip.
+  await detailOf(CR(ids.dolor), "Agacharse ya no duele");
+  await detailOf(CR(ids.precio), "Precio bajo, piso firme");
+  await modo("Instagram Feed");
+  f = await placement();
+  expect(f.strip === null && f.cta === null && f.text.includes("Todavía no tiene texto del anuncio"), "Instagram feed without copy: " + JSON.stringify(f));
+});
+
+await step("detail: copy buttons sit on the first line of every row, facts are one hairline list without holes (12px --text-3 labels)", async () => {
+  await detailOf(AD, "Luz que no encandila");
+  const rows = await page.eval(`[...document.querySelectorAll(".copyrow")].map((r) => { const t = r.getBoundingClientRect().top;
+    const mid = (el) => { const b = el.getBoundingClientRect(); return Math.round(b.top + b.height / 2 - t); };
+    return { btn: mid(r.querySelector("button")), label: mid(r.querySelector(".label")), h: r.getBoundingClientRect().height }; })`);
+  expect(rows.length === 4 && rows[0].h > rows[1].h, "copy rows (the first one wraps): " + JSON.stringify(rows));
+  expect(new Set(rows.map((r) => r.btn)).size === 1 && rows.every((r) => Math.abs(r.btn - r.label) <= 2), "Copiar buttons are not centered on the first line of each row: " + JSON.stringify(rows));
+  const facts = await page.eval(`(() => { const l = document.querySelector(".facts"); const lr = l.getBoundingClientRect();
+    const probe = document.createElement("span"); probe.style.color = "var(--text-3)"; document.body.append(probe); const want = getComputedStyle(probe).color; probe.remove();
+    return { tag: l.tagName, rows: [...l.children].map((f) => { const r = f.getBoundingClientRect(); const dt = f.querySelector("dt"); const s = dt ? getComputedStyle(dt) : {};
+      return { left: Math.round(r.left - lr.left), right: Math.round(lr.right - r.right), dt: dt ? dt.textContent : null, dd: (f.querySelector("dd") || {}).textContent || "", size: s.fontSize, color: s.color === want, line: getComputedStyle(f).borderBottomStyle }; }) }; })()`);
+  expect(facts.tag === "DL" && facts.rows.length >= 3, "facts are not a description list: " + JSON.stringify(facts));
+  expect(facts.rows.every((r) => r.dt && r.dd && r.left === facts.rows[0].left && r.right === facts.rows[0].right), "facts have holes or empty rows: " + JSON.stringify(facts.rows));
+  expect(facts.rows.every((r) => r.size === "12px" && r.color), "fact labels are not 12px --text-3: " + JSON.stringify(facts.rows));
+  expect(facts.rows.slice(0, -1).every((r) => r.line === "solid"), "fact rows are not split by hairlines: " + JSON.stringify(facts.rows));
+});
+
+await step("ad preview (video): the video plays inside the feed ad with its copy; a video without copy shows the note", async () => {
+  await detailOf(VID(V1), "La cama pegada al piso");
+  let m = await mock();
+  expect(m && m.video, "no video inside the ad preview: " + JSON.stringify(m));
+  expect(m.text === "Mi cama estaba pegada al piso y lo arreglé en 5 minutos." && m.headline === "Patas de madera para cama" && m.desc === "Envío gratis" && m.cta === "Comprar",
+    "video ad text: " + JSON.stringify(m));
+  expect(JSON.stringify(m.modes) === JSON.stringify(["Facebook Feed=true", "Instagram Feed=false", "Instagram Stories=false"]), "video preview modes: " + JSON.stringify(m.modes));
+  await modo("Instagram Stories");
+  m = await mock();
+  expect(m.stories && m.video && m.cta === "Comprar", "video stories preview: " + JSON.stringify(m));
+  await toMock();
+  await page.shot("04g-anuncio-video");
+  await detailOf(VID(V2), "Video descartado de prueba");
+  m = await mock();
+  expect(m && m.note === "Todavía no tiene texto del anuncio" && m.cta === null && m.text === null, "video without copy: " + JSON.stringify(m));
 });
 
 await step("reopen in multi-select: the bar button reopens the discarded ones and says so for the rest", async () => {

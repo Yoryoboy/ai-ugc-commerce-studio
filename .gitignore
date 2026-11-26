@@ -8,3 +8,6 @@ odd/
 
 # Local presentation deck (not part of the plugin)
 presentacion/
+
+# Gallery dev environment (mock studio built by dev/galeria.mjs)
+dev/.studio/
