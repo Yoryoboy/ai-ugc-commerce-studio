@@ -142,25 +142,35 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
 .list-foot { display: grid; justify-items: center; gap: 6px; padding-top: 8px; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(180px, 42vw), 1fr)); gap: 16px; }
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; display: grid; grid-template-rows: auto 1fr; min-width: 0; color: inherit; }
-.item { position: relative; display: block; }
+/* List cards: a flex column (media, then the body), every grid row stretches its cards to one height.
+   The body has fixed slots so title and meta start at the same height in every card of a row:
+   status row (20px, kept when empty) > title (two lines, clamped) > meta > type tag at the bottom. */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; display: flex; flex-direction: column; min-width: 0; color: inherit; }
+.item { position: relative; }
 .card:hover, .item:hover { border-color: var(--border-strong); }
-.item.selected, .item.selected:hover { border-color: var(--accent); outline: 1px solid var(--accent); }
+.item.selected, .item.selected:hover { border-color: var(--accent); background: var(--accent-soft); }
 .item.archived .media img { opacity: .6; }
-.cardlink { display: grid; grid-template-rows: auto 1fr; height: 100%; color: inherit; }
+.cardlink { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; color: inherit; }
 .cardlink:hover { text-decoration: none; }
 .media { aspect-ratio: 9 / 16; background: var(--surface-2); display: grid; place-items: center; position: relative; overflow: hidden; }
 .media img, .media video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .media .placeholder { padding: 16px; text-align: center; color: var(--text-3); font-size: 12px; }
-.media .badge { position: absolute; right: 8px; top: 8px; height: 20px; display: inline-flex; align-items: center; padding: 0 6px; font-size: 12px; font-weight: 500; border-radius: var(--r-sm); background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); }
+/* The checkbox overlay (top left) and the kind badge (top right) are one shape: 24px, --r, surface, strong border. */
+.pick, .media .badge { position: absolute; top: 8px; z-index: 2; height: 24px; border-radius: var(--r); background: var(--surface); border: 1px solid var(--border-strong); }
+.media .badge { right: 8px; display: inline-flex; align-items: center; padding: 0 8px; font-size: 12px; line-height: 1; font-weight: 500; color: var(--text); }
+/* Every cover fills its frame (carousel cards included): the frame ratio is the kind's, never letterboxed. */
 .creative .media, .actor .media { aspect-ratio: 4 / 5; }
 .product .media { aspect-ratio: 1 / 1; }
 .client .media { aspect-ratio: 16 / 10; }
-.creative.carousel .media img { object-fit: contain; }
-.pick { position: absolute; left: 8px; top: 8px; z-index: 2; width: 28px; height: 28px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r); cursor: pointer; }
+.grid.mixed .media { aspect-ratio: 4 / 5; } /* search results: one ratio so mixed kinds share a row line */
+.pick { left: 8px; width: 24px; display: grid; place-items: center; cursor: pointer; }
 .pick input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
-.card-body { padding: 10px 12px 12px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.card-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-width: 0; }
 .card-body h3 { overflow-wrap: anywhere; }
+.item .card-body .pills { min-height: 20px; }
+.item .card-body h3 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; min-height: 36px; }
+.item.client .card-body h3 { min-height: 0; }
+.card-body .tag.type { align-self: flex-start; margin-top: auto; }
 .meta { font-size: 12px; line-height: 18px; color: var(--text-3); overflow-wrap: anywhere; }
 
 /* status: text + a distinct shape, never a filled background (ok circle, warn diamond, idle hollow circle, off dash, bad triangle) */
@@ -292,6 +302,23 @@ body.visor-open { overflow: hidden; }
 .visor-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; font-size: 24px; line-height: 1; }
 .visor-prev { left: 16px; }
 .visor-next { right: 16px; }
+/* quick view of a creative card (hover after a delay, or keyboard focus): a floating layer beside the
+   card with the current piece of every slot. It never takes the pointer, so it cannot block a checkbox. */
+.qv { position: fixed; left: 0; top: 0; z-index: 30; pointer-events: none; width: max-content; max-width: min(560px, calc(100vw - 16px)); background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: 12px; display: grid; gap: 10px; }
+.qv[hidden] { display: none; }
+.qv-head { display: grid; gap: 2px; min-width: 0; }
+.qv-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.qv-pieces { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.qv-piece { margin: 0; display: grid; gap: 4px; }
+.qv-piece img, .qv-piece .placeholder { display: block; height: 200px; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--r); border: 1px solid var(--border); background: var(--surface-2); }
+.qv-piece.r9x16 img, .qv-piece.r9x16 .placeholder { aspect-ratio: 9 / 16; }
+.qv-piece.r1x1 img, .qv-piece.r1x1 .placeholder { aspect-ratio: 1 / 1; }
+.qv-pieces.carousel .qv-piece img, .qv-pieces.carousel .qv-piece .placeholder { height: 150px; }
+.qv-piece .placeholder { display: grid; place-items: center; padding: 8px; text-align: center; color: var(--text-3); font-size: 12px; }
+.qv-piece figcaption { font-size: 12px; line-height: 18px; color: var(--text-2); }
+.qv .skeleton { padding: 12px 24px; }
+@keyframes qv-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: no-preference) { .qv { animation: qv-in 120ms ease-out; } }
 @keyframes visor-in { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: no-preference) { .visor-stage img { animation: visor-in 160ms ease-out; } }
 @media (max-width: 560px) {
@@ -338,6 +365,7 @@ body.visor-open { overflow: hidden; }
 <div class="manual" id="manual" role="dialog" aria-modal="true" aria-labelledby="manual-titulo" hidden></div>
 <div class="manual" id="dialogo" role="alertdialog" aria-modal="true" aria-labelledby="dialogo-titulo" hidden></div>
 <div class="visor" id="visor" role="dialog" aria-modal="true" aria-labelledby="visor-titulo" hidden></div>
+<div class="qv" id="vista-rapida" role="tooltip" hidden></div>
 <script>
 "use strict";
 
@@ -648,6 +676,7 @@ async function route(silent) {
 }
 
 function mount(...nodes) {
+  closeQuickView();
   $("app").replaceChildren(...nodes.flat().filter(Boolean));
 }
 
@@ -1200,24 +1229,126 @@ function itemCard(it, opts) {
     it.actorId && it.kind !== "actor" ? actorName(it.actorId) : null,
     fmtDate(it.updatedAt),
   ].filter(Boolean).join(" · ");
+  const name = it.title || it.path.split("/").pop();
+  const link = h("a", { class: "cardlink", href: hrefFor(it) },
+    h("div", { class: "media" },
+      it.cover ? picture(it.cover, 480, "") : h("div", { class: "placeholder" }, "Sin imagen todavía"),
+      o.showKind ? h("span", { class: "badge" }, KIND_LABEL[it.kind] || it.kind) : null),
+    h("div", { class: "card-body" },
+      // The status row keeps its height when empty, so the title starts at the same height in every card.
+      h("div", { class: "pills" },
+        it.broken ? h("span", { class: "pill st-broken" }, "Dañado") : (ESTADO[it.status] ? pill(it.status) : null),
+        it.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null),
+      h("h3", { title: name }, name),
+      meta ? h("p", { class: "meta" }, meta) : null,
+      it.kind === "creative" && it.type ? h("span", { class: "tag type" }, typeLabel(it)) : null));
+  if (it.kind === "creative") quickViewOn(link, it);
   const card = h("article", { class: "card item " + it.kind + (it.archived ? " archived" : "") + (on ? " selected" : "") },
     selectable ? h("label", { class: "pick", title: "Seleccionar" },
       h("input", { type: "checkbox", checked: on, "aria-label": "Seleccionar " + it.title, onchange: (e) => toggleSel(it, e.target.checked, card) })) : null,
-    h("a", { class: "cardlink", href: hrefFor(it) },
-      h("div", { class: "media" },
-        it.cover ? picture(it.cover, 480, "") : h("div", { class: "placeholder" }, "Sin imagen todavía"),
-        o.showKind ? h("span", { class: "badge" }, KIND_LABEL[it.kind] || it.kind) : null),
-      h("div", { class: "card-body" },
-        h("div", { class: "pills" },
-          it.broken ? h("span", { class: "pill st-broken" }, "Dañado") : (ESTADO[it.status] ? pill(it.status) : null),
-          it.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null,
-          it.kind === "creative" && it.type ? h("span", { class: "tag type" }, typeLabel(it)) : null),
-        h("h3", {}, it.title || it.path.split("/").pop()),
-        meta ? h("p", { class: "meta" }, meta) : null)));
+    link);
   return card;
 }
 
-const grid = (items, opts) => h("div", { class: "grid" }, items.map((it) => itemCard(it, opts)));
+const grid = (items, opts) => h("div", { class: "grid" + (opts && opts.showKind ? " mixed" : "") }, items.map((it) => itemCard(it, opts)));
+
+// ---------- quick view ----------
+// Hovering a creative card with a mouse (after QV_DELAY ms) or reaching its link with the keyboard
+// shows the current piece of every slot (4:5, 9:16, carousel cards 1…N) in #vista-rapida, beside the
+// card, without leaving the list. A touch tap is not a hover: it opens the detail as before. Leaving
+// the card, Escape, moving the focus away, scrolling or a new view close it. The pieces come from the
+// same GET /api/elemento the detail view reads (the list only knows the cover), once per version.
+const QV_DELAY = 300;
+const qv = { link: null, item: null, timer: null, open: false, cache: new Map() };
+
+function quickViewOn(link, it) {
+  link.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse" || e.pointerType === "pen") scheduleQuickView(link, it); });
+  link.addEventListener("pointerleave", (e) => { if (e.pointerType !== "touch") closeQuickView(link); });
+  // Only keyboard focus: a tap or click also focuses the link, but not :focus-visible.
+  link.addEventListener("focus", () => { if (link.matches(":focus-visible")) scheduleQuickView(link, it); });
+  link.addEventListener("blur", () => closeQuickView(link));
+}
+
+function scheduleQuickView(link, it) {
+  if (qv.link !== link) closeQuickView();
+  if (qv.link === link && (qv.open || qv.timer)) return;
+  qv.link = link;
+  qv.item = it;
+  qv.timer = setTimeout(() => { qv.timer = null; showQuickView(); }, QV_DELAY);
+}
+
+// Closes the quick view (of `link` only, when given).
+function closeQuickView(link) {
+  if (link && qv.link !== link) return;
+  clearTimeout(qv.timer);
+  qv.timer = null;
+  if (qv.link) qv.link.removeAttribute("aria-describedby");
+  qv.link = null;
+  qv.item = null;
+  if (!qv.open) return;
+  qv.open = false;
+  const panel = $("vista-rapida");
+  panel.hidden = true;
+  panel.replaceChildren();
+}
+
+async function showQuickView() {
+  const link = qv.link;
+  const it = qv.item;
+  if (!link || !link.isConnected) { closeQuickView(); return; }
+  qv.open = true;
+  link.setAttribute("aria-describedby", "vista-rapida");
+  const key = it.path + "|" + it.updatedAt + "|" + it.pieces;
+  const cached = qv.cache.get(key);
+  drawQuickView(it, cached || null);
+  if (cached) return;
+  let pieces;
+  try { pieces = (await api("/api/elemento?" + qs({ ruta: it.path }))).pieces || []; } catch (e) { pieces = null; }
+  if (pieces) qv.cache.set(key, pieces);
+  if (qv.link === link && qv.open) drawQuickView(it, pieces || [], !pieces);
+}
+
+function drawQuickView(it, pieces, failed) {
+  const panel = $("vista-rapida");
+  const carousel = it.type === "carousel";
+  const name = it.title || it.path.split("/").pop();
+  const piece = (p) => {
+    const ratio = /^\d+x\d+$/.test(p.slot) ? " r" + p.slot : "";
+    return h("figure", { class: "qv-piece" + ratio },
+      p.current ? picture(p.current.src, 480, "") : h("div", { class: "placeholder" }, "Sin imagen todavía"),
+      h("figcaption", {}, p.label));
+  };
+  fill(panel,
+    h("div", { class: "qv-head" }, h("span", { class: "qv-title" }, name), it.type ? h("span", { class: "meta" }, typeLabel(it)) : null),
+    !pieces ? h("p", { class: "skeleton" }, "Cargando las piezas…")
+      : failed ? h("p", { class: "meta" }, "No se pudieron cargar las piezas.")
+        : pieces.length ? h("div", { class: "qv-pieces" + (carousel ? " carousel" : "") }, pieces.map(piece))
+          : h("p", { class: "meta" }, "Todavía no hay imágenes de este creativo."));
+  panel.hidden = false;
+  placeQuickView();
+}
+
+// Beside the card (right, else left), top-aligned with it, always inside the viewport.
+function placeQuickView() {
+  const panel = $("vista-rapida");
+  if (!qv.link || panel.hidden) return;
+  const card = (qv.link.closest(".item") || qv.link).getBoundingClientRect();
+  const w = panel.offsetWidth;
+  const hgt = panel.offsetHeight;
+  const gap = 8;
+  const vw = document.documentElement.clientWidth;
+  const vh = document.documentElement.clientHeight;
+  let left = card.right + gap;
+  if (left + w > vw - gap) left = card.left - gap - w;
+  left = Math.max(gap, Math.min(left, vw - gap - w));
+  const top = Math.max(gap, Math.min(card.top, vh - gap - hgt));
+  panel.style.left = left + "px";
+  panel.style.top = top + "px";
+}
+
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && (qv.open || qv.timer)) closeQuickView(); });
+window.addEventListener("scroll", () => closeQuickView(), { passive: true, capture: true });
+window.addEventListener("resize", () => closeQuickView());
 
 // ---------- paginated lists ----------
 
@@ -1254,6 +1385,7 @@ function makeList(o) {
     head.replaceChildren(
       selectable && picks.length ? h("label", { class: "checkline" }, box, "Seleccionar todo lo cargado (" + picks.length + ")") : h("span"),
       h("span", { class: "muted num" }, plural(total, "resultado", "resultados")));
+    closeQuickView(); // its card is about to be redrawn
     body.replaceChildren(vis.length ? o.render(vis) : (c.busy ? h("p", { class: "skeleton" }, "Cargando…") : o.empty));
     const more = c.items.length < c.total;
     fill(foot,
@@ -1379,7 +1511,7 @@ async function viewHome(r, my) {
     clientsGrid.append(h("article", { class: "card item client" },
       h("a", { class: "cardlink", href: hClient(c.profileId) }, media,
         h("div", { class: "card-body" },
-          h("h3", {}, c.name),
+          h("h3", { title: c.name }, c.name),
           h("p", { class: "meta num" }, [plural(c.products, "producto", "productos"), plural(c.creatives, "creativo", "creativos"), plural(c.videos, "video", "videos")].join(" · "))))));
     covers.push(async () => {
       const x = await api("/api/elementos?" + qs({ tipo: "producto", cliente: c.profileId, orden: "titulo", porPagina: 1 }));
@@ -1433,8 +1565,8 @@ function productCard(p) {
     h("a", { class: "cardlink", href: hrefFor(p) },
       h("div", { class: "media" }, p.cover ? picture(p.cover, 480, "") : h("div", { class: "placeholder" }, "Sin foto")),
       h("div", { class: "card-body" },
-        p.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null,
-        h("h3", {}, p.title || p.productId), counts)));
+        h("div", { class: "pills" }, p.archived ? h("span", { class: "pill st-archived" }, "Archivado") : null),
+        h("h3", { title: p.title || p.productId }, p.title || p.productId), counts)));
 }
 function fillCounts(items, my) {
   const tasks = items.filter((p) => p.kind === "product").map((p) => async () => {
@@ -1879,7 +2011,7 @@ async function actorDetail(e, after) {
 
 // The skip link must not change the hash: the hash is the route.
 $("saltar").addEventListener("click", (ev) => { ev.preventDefault(); $("app").focus(); });
-window.addEventListener("hashchange", () => { hideViewer(); route(false); });
+window.addEventListener("hashchange", () => { hideViewer(); closeQuickView(); route(false); });
 document.addEventListener("visibilitychange", () => { if (!document.hidden && location.protocol !== "file:") poll(); });
 if (location.protocol === "file:") {
   // Opened by double-click: there is no server behind this page.

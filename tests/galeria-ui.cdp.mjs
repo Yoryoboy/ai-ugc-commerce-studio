@@ -95,6 +95,19 @@ json("clientes/beta/MLB2/producto.json", { profileId: "beta", productId: "MLB2",
 const VIS = "clientes/beta/MLB2/creativos/2026-11-15-x-visor";
 json(`${VIS}/creativo.json`, { id: "2026-11-15-x-visor", title: "Piezas para el visor", type: "static", status: "draft", batch: "2026-11-15-lampara", slots: ["4x5", "9x16"], updatedAt: "2026-11-15T12:00:00Z" });
 png(`${VIS}/4x5-v1.png`, "#1f6f8b"); png(`${VIS}/4x5-v2.png`, "#8b1f4e"); png(`${VIS}/9x16-v1.png`, "#4e8b1f", "270x480");
+// A product of its own for the card alignment step (one batch, one row): a title that wraps to two
+// lines, one far longer than two lines, a creative without status and a carousel of square cards.
+const AL = "clientes/beta/MLB3";
+const AL_CR = (id) => `${AL}/creativos/${id}`;
+const LARGO = "Funda de lino lavado a la piedra con cierre invisible, relleno de pluma y costuras reforzadas a mano una por una";
+const DOS = "Almohadón suave para el sillón del living";
+json(`${AL}/producto.json`, { profileId: "beta", productId: "MLB3", title: "Funda de almohadón" });
+const alineado = (id, extra) => json(`${AL_CR(id)}/creativo.json`, { id, type: "static", status: "draft", batch: "2026-11-18-funda", slots: ["4x5"], ...extra });
+alineado("2026-11-18-x-largo", { title: LARGO, updatedAt: "2026-11-18T12:00:00Z" }); png(`${AL_CR("2026-11-18-x-largo")}/4x5-v1.png`, "#6b8e23");
+alineado("2026-11-18-x-dos", { title: DOS, status: "approved", updatedAt: "2026-11-18T11:00:00Z" }); png(`${AL_CR("2026-11-18-x-dos")}/4x5-v1.png`, "#8e236b");
+alineado("2026-11-18-x-sin-estado", { title: "Sin estado todavía", status: undefined, updatedAt: "2026-11-18T10:00:00Z" }); png(`${AL_CR("2026-11-18-x-sin-estado")}/4x5-v1.png`, "#236b8e");
+alineado("2026-11-18-x-tarjetas", { title: "Tres pasos", type: "carousel", slots: ["tarjeta-1", "tarjeta-2"], updatedAt: "2026-11-18T09:00:00Z" });
+png(`${AL_CR("2026-11-18-x-tarjetas")}/tarjeta-1-v1.png`, "#8e6b23", "400x400"); png(`${AL_CR("2026-11-18-x-tarjetas")}/tarjeta-2-v1.png`, "#238e6b", "400x400");
 // An old entry in the trash (2020), written the way the server writes them.
 file(".papelera/2020-01-01T000000Z-abcdef/clientes/acme/viejo.txt", "old");
 json(".papelera/2020-01-01T000000Z-abcdef/papelera.json", { id: "2020-01-01T000000Z-abcdef", originalPath: "clientes/acme/viejo.txt", trashedAt: "2020-01-01T00:00:00Z", kind: "file" });
@@ -174,6 +187,17 @@ async function openPage(init) {
     cardTitles: () => page.eval(`[...document.querySelectorAll(".item h3")].map((h) => h.textContent)`),
     pick: (title) => page.eval(`(() => { const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector("h3").textContent === ${JSON.stringify(title)}); const i = c && c.querySelector(".pick input"); if (!i) throw new Error("no card: ${title}"); i.click(); return true; })()`),
     resources: () => page.eval(`performance.getEntriesByType("resource").map((e) => e.name)`),
+    // Real input through the browser (not synthetic DOM events): pointer and focus-visible behave as for a person.
+    mouse: (x, y) => cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x, y }),
+    async key(key, keyCode) {
+      await cdp("Input.dispatchKeyEvent", { type: "rawKeyDown", key, code: key, windowsVirtualKeyCode: keyCode });
+      await cdp("Input.dispatchKeyEvent", { type: "keyUp", key, code: key, windowsVirtualKeyCode: keyCode });
+    },
+    async tap(x, y) {
+      await cdp("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+      await cdp("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    },
+    cdp,
     async close() { await send("Target.closeTarget", { targetId }); },
   };
   return page;
@@ -234,6 +258,153 @@ await step("design system: header controls share 32px and one row, status pills 
   expect(font.check && font.loaded, "Geist is not embedded and loaded: " + JSON.stringify(font));
   expect(/^"?Geist"?,/.test(font.body), "body font stack does not start with Geist: " + font.body);
   await page.shot("01b-design-system");
+});
+
+await step("list cards: title and meta start at the same height across a row (2-line title, no status), long titles clamp to 2 lines with the full title kept, covers fill the frame, selected is accent + accent-soft, checkbox and badge share one shape", async () => {
+  await page.hash("#/beta/MLB3/creativos");
+  await page.waitFor(`document.querySelectorAll(".item.creative").length === 4`, "the four creatives of the alignment product");
+  const cards = await page.eval(`[...document.querySelectorAll(".item.creative")].map((c) => {
+    const t = c.querySelector("h3"); const m = c.querySelector(".meta"); const img = c.querySelector(".media img");
+    const range = document.createRange(); range.selectNodeContents(t);
+    return { title: t.textContent, attr: t.getAttribute("title"), row: Math.round(c.getBoundingClientRect().top), h3: t.getBoundingClientRect().top,
+      meta: m ? m.getBoundingClientRect().top : null, box: t.getBoundingClientRect().height, text: range.getBoundingClientRect().height,
+      lh: parseFloat(getComputedStyle(t).lineHeight), pill: !!c.querySelector(".pill"), fit: img ? getComputedStyle(img).objectFit : null,
+      type: (c.querySelector(".tag.type") || {}).textContent || "" };
+  })`);
+  const by = (t) => cards.find((c) => c.title === t);
+  const [largo, dos, sin, tres] = [by(LARGO), by(DOS), by("Sin estado todavía"), by("Tres pasos")];
+  expect(largo && dos && sin && tres, "missing cards: " + JSON.stringify(cards.map((c) => c.title)));
+  expect(!sin.pill, "the creative without status shows a status pill");
+  expect(new Set(cards.map((c) => c.row)).size === 1, "the four cards are not in one row: " + JSON.stringify(cards.map((c) => c.row)));
+  expect(dos.text > dos.lh * 1.5, `the two-line title fits in one line (text ${dos.text}px, line ${dos.lh}px)`);
+  const spread = (k) => Math.max(...cards.map((c) => c[k])) - Math.min(...cards.map((c) => c[k]));
+  expect(spread("h3") <= 1, "titles start at different heights: " + JSON.stringify(cards.map((c) => [c.title.slice(0, 12), c.h3])));
+  expect(cards.every((c) => c.meta !== null) && spread("meta") <= 1, "meta lines start at different heights: " + JSON.stringify(cards.map((c) => [c.title.slice(0, 12), c.meta])));
+  expect(largo.text > largo.lh * 2.5, "the long title is not longer than two lines, the clamp is not tested: " + largo.text);
+  expect(largo.box <= largo.lh * 2 + 1, `the long title is not clamped to two lines (${largo.box}px)`);
+  expect(cards.every((c) => c.attr === c.title), "the full title is not in the title attribute: " + JSON.stringify(cards.map((c) => c.attr)));
+  expect(tres.type.startsWith("Carrusel") && tres.fit === "cover", "the carousel cover does not fill the frame: " + JSON.stringify([tres.type, tres.fit]));
+  await page.eval(`document.querySelector(".item.creative").scrollIntoView({ block: "center" }), true`);
+  await page.shot("01c-tarjetas-alineadas");
+  // Selected: accent border + accent-soft fill (hover only strengthens the border).
+  await page.pick("Sin estado todavía");
+  const sel = await page.eval(`(() => {
+    const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector("h3").textContent === "Sin estado todavía");
+    const probe = document.createElement("div"); probe.style.cssText = "background: var(--accent-soft); border: 1px solid var(--accent)"; document.body.append(probe);
+    const want = getComputedStyle(probe); const got = getComputedStyle(c);
+    const out = { bg: got.backgroundColor, border: got.borderTopColor, outline: got.outlineStyle, wantBg: want.backgroundColor, wantBorder: want.borderTopColor };
+    probe.remove(); return out; })()`);
+  expect(sel.bg === sel.wantBg && sel.border === sel.wantBorder, "selected card is not accent border + accent-soft fill: " + JSON.stringify(sel));
+  await page.shot("01d-tarjeta-seleccionada");
+  await page.pick("Sin estado todavía");
+  expect(await page.eval(`state.selection.size === 0`), "the card did not unselect");
+  // The checkbox overlay and the kind badge in search results are one shape.
+  await page.hash("#/buscar?cliente=beta&tipo=creativo");
+  await page.waitFor(`document.querySelectorAll(".item.creative .media .badge").length >= 4`, "search results with kind badges");
+  const shapes = await page.eval(`(() => { const c = document.querySelector(".item.creative");
+    return [c.querySelector(".pick"), c.querySelector(".media .badge")].map((el) => { const s = getComputedStyle(el); const r = el.getBoundingClientRect();
+      return [r.height, s.borderTopLeftRadius, s.backgroundColor, s.borderTopColor, s.borderTopWidth].join("|") + "@" + Math.round(r.top); }); })()`);
+  expect(shapes[0] === shapes[1], "checkbox overlay and corner badge differ in shape or top: " + JSON.stringify(shapes));
+});
+
+const MLA1_LIST = "#/acme/MLA1/creativos";
+const srcOf = (p) => "/" + p; // studio path as the quick view shows it, thumbnail or full file
+const quickView = (page) => page.eval(`(() => { const p = document.getElementById("vista-rapida"); if (!p || p.hidden) return null;
+  const r = p.getBoundingClientRect();
+  return { inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && r.width > 0,
+    pieces: [...p.querySelectorAll("figure")].map((f) => { const i = f.querySelector("img");
+      return f.querySelector("figcaption").textContent + "=" + (i ? decodeURIComponent(i.getAttribute("src").split("?")[0]).replace(/^\\/miniatura\\//, "/") : "none"); }) }; })()`);
+const cardPoint = (page, titleText, part = ".media") => page.eval(`(() => {
+  const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector("h3").textContent === ${JSON.stringify(titleText)});
+  if (!c) throw new Error("no card: " + ${JSON.stringify(titleText)});
+  c.scrollIntoView({ block: "center" });
+  const r = c.querySelector(${JSON.stringify(part)}).getBoundingClientRect();
+  return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+// Screenshots of the quick view once its images are in and the fade is over.
+const qvSettled = async (page) => { await page.waitFor(`[...document.querySelectorAll("#vista-rapida img")].every((i) => i.complete)`, "the quick view images", 4000); await sleep(200); };
+const DOLOR_PIECES = ["4:5=" + srcOf(`${CR(ids.dolor)}/4x5-v2.png`), "9:16=" + srcOf(`${CR(ids.dolor)}/9x16-v2.png`)];
+
+await step("quick view: hovering a creative card shows its current pieces after a short delay, carousels show every card, Escape and leaving close it, the route does not change and the checkbox stays clickable", async () => {
+  await page.hash(MLA1_LIST);
+  await page.waitFor(`document.querySelectorAll(".item").length === 5`, "the creatives of the product");
+  await page.mouse(1, 1);
+  const hash0 = await page.eval(`location.hash`);
+  const d = await cardPoint(page, "Agacharse ya no duele");
+  await sleep(150); // let the scroll settle before the pointer arrives
+  await page.mouse(d.x, d.y);
+  expect((await quickView(page)) === null, "the quick view opened at once, without the hover delay");
+  await page.waitFor(`(() => { const p = document.getElementById("vista-rapida"); return !!p && !p.hidden && p.querySelectorAll("figure").length === 2; })()`, "the quick view of the static creative");
+  let v = await quickView(page);
+  expect(JSON.stringify(v.pieces) === JSON.stringify(DOLOR_PIECES), "static pieces: " + JSON.stringify(v.pieces));
+  expect(v.inside, "the quick view leaves the viewport");
+  const pick = await page.eval(`(() => { const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector("h3").textContent === "Agacharse ya no duele");
+    const r = c.querySelector(".pick").getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return !!hit && hit.closest(".pick") === c.querySelector(".pick"); })()`);
+  expect(pick, "the quick view covers the card checkbox");
+  await qvSettled(page);
+  await page.shot("02a-vista-rapida-estatica");
+  // Another card: the carousel shows its cards 1…N (a card without an image says so).
+  const k = await cardPoint(page, "Carrusel de tres pasos");
+  await sleep(150);
+  await page.mouse(k.x, k.y);
+  await page.waitFor(`(() => { const p = document.getElementById("vista-rapida"); return !!p && !p.hidden && [...p.querySelectorAll("figcaption")].some((f) => f.textContent === "Tarjeta 1"); })()`, "the quick view of the carousel");
+  v = await quickView(page);
+  expect(JSON.stringify(v.pieces) === JSON.stringify(["Tarjeta 1=" + srcOf(`${CR(ids.carrusel)}/tarjeta-1-v2.png`), "Tarjeta 2=" + srcOf(`${CR(ids.carrusel)}/tarjeta-2-v1.png`), "Tarjeta 3=none"]),
+    "carousel pieces: " + JSON.stringify(v.pieces));
+  expect(v.inside, "the carousel quick view leaves the viewport");
+  await qvSettled(page);
+  await page.shot("02b-vista-rapida-carrusel");
+  await page.key("Escape", 27);
+  await page.waitFor(`document.getElementById("vista-rapida").hidden`, "Escape to close the quick view");
+  // Leaving the card closes it too.
+  const d2 = await cardPoint(page, "Agacharse ya no duele");
+  await sleep(150);
+  await page.mouse(d2.x, d2.y);
+  await page.waitFor(`!document.getElementById("vista-rapida").hidden`, "the quick view again");
+  await page.mouse(1, 1);
+  await page.waitFor(`document.getElementById("vista-rapida").hidden`, "leaving the card to close the quick view");
+  expect((await page.eval(`location.hash`)) === hash0, "hovering changed the route: " + (await page.eval(`location.hash`)));
+});
+
+await step("quick view: keyboard focus on the card link shows it, Escape and moving focus away close it", async () => {
+  await page.hash(MLA1_LIST);
+  await page.waitFor(`document.querySelectorAll(".item").length === 5`, "the creatives of the product");
+  await page.mouse(1, 1);
+  const hash0 = await page.eval(`location.hash`);
+  await page.eval(`(() => { const c = [...document.querySelectorAll(".item")].find((x) => x.querySelector("h3").textContent === "Agacharse ya no duele");
+    c.scrollIntoView({ block: "center" }); c.querySelector(".pick input").focus(); return true; })()`);
+  await sleep(150);
+  await page.key("Tab", 9);
+  expect(await page.eval(`!!document.activeElement.closest(".cardlink") && document.activeElement.closest(".item").querySelector("h3").textContent === "Agacharse ya no duele"`),
+    "Tab did not reach the card link");
+  await page.waitFor(`(() => { const p = document.getElementById("vista-rapida"); return !!p && !p.hidden && p.querySelectorAll("figure").length === 2; })()`, "the quick view on keyboard focus");
+  const v = await quickView(page);
+  expect(JSON.stringify(v.pieces) === JSON.stringify(DOLOR_PIECES), "pieces on focus: " + JSON.stringify(v.pieces));
+  await qvSettled(page);
+  await page.shot("02c-vista-rapida-teclado");
+  await page.key("Escape", 27);
+  await page.waitFor(`document.getElementById("vista-rapida").hidden`, "Escape to close the quick view opened by focus");
+  await page.key("Tab", 9);
+  await sleep(500);
+  expect(await page.eval(`document.getElementById("vista-rapida").hidden`), "the quick view stayed open after focus moved on");
+  expect((await page.eval(`location.hash`)) === hash0, "keyboard focus changed the route");
+});
+
+await step("quick view: a touch tap on a card opens the detail and never shows the quick view", async () => {
+  await page.hash(MLA1_LIST);
+  await page.waitFor(`document.querySelectorAll(".item").length === 5`, "the creatives of the product");
+  await page.eval(`(() => { window.__qvShown = false; new MutationObserver(() => { const p = document.getElementById("vista-rapida"); if (p && !p.hidden) window.__qvShown = true; })
+    .observe(document.body, { subtree: true, attributes: true, childList: true }); return true; })()`);
+  const d = await cardPoint(page, "Agacharse ya no duele");
+  await sleep(150);
+  await page.cdp("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+  try {
+    await page.tap(d.x, d.y);
+    await page.waitFor(`document.querySelector("h1") && document.querySelector("h1").textContent === "Agacharse ya no duele"`, "the tap to open the detail");
+    await sleep(500);
+  } finally { await page.cdp("Emulation.setTouchEmulationEnabled", { enabled: false }); }
+  expect(await page.eval(`window.__qvShown === false`), "a touch tap showed the quick view");
+  expect((await page.eval(`location.hash`)) === "#/elemento/" + CR(ids.dolor).split("/").map(encodeURIComponent).join("/"), "the tap did not open the detail: " + (await page.eval(`location.hash`)));
 });
 
 await step("cards and search results show the product and client names, creative type and pieces", async () => {
