@@ -63,9 +63,11 @@ List what did not match, both ways: ads in Meta with no piece in the studio ("no
 estudio, o les cambiaron el nombre") and pieces with no ad ("todavía no se subió, o tiene otro
 nombre"). Ask if a pair is an obvious rename; never guess it silently.
 
-For videos, if the rows carry retention metrics (thumbstop or 3-second views, hold rate; they
-are pending in https://github.com/Yoryoboy/madeof-bi-mcp/issues/112), use them to diagnose.
-Without them, do not invent them: read the video by CTR and purchases only.
+For videos, the rows carry a `video` block with retention metrics: `thumbstop_percent` (3-second
+views over impressions), `thruplays` and `cost_per_thruplay`, how many plays reached `p25` to
+`p100`, and `avg_watch_seconds`. Use them to diagnose: a low thumbstop points at the hook, a
+steep drop between `p25` and `p75` at the middle of the video. When a row has no `video` block
+(not a video, or an older BI-MCP), do not invent them: read the video by CTR and purchases only.
 
 Mercado Libre Product Ads is optional, only if the user asks or the product also advertises
 there: `meli_list_product_ads_advertisers`, then `meli_search_product_ads_ads` for the dates.
